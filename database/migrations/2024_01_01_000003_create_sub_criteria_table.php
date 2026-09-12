@@ -14,6 +14,8 @@ return new class extends Migration
             $table->string('code')->unique();
             $table->string('name');
             $table->text('description')->nullable();
+            $table->decimal('local_weight', 5, 4)->nullable();
+            $table->unsignedSmallInteger('order')->default(0);
             $table->timestamps();
         });
     }

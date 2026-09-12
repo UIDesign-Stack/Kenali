@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('ai_chat_session_id')->constrained('ai_chat_sessions')->cascadeOnDelete();
             $table->enum('sender', ['user', 'ai']);
             $table->text('message');
+            $table->boolean('is_flagged')->default(false);
             $table->timestamps();
         });
     }

@@ -18,6 +18,11 @@ class DatabaseSeeder extends Seeder
        $this->call([
            AclSeeder::class,
            UsersTableSeeder::class,
+           CriteriaSeeder::class,
+           SubCriteriaSeeder::class,
+           AhpDataSeeder::class,
+           QuestionSeeder::class,
+           AlternativeSeeder::class,
        ]);
    }
 }

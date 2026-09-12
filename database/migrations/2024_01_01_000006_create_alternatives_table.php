@@ -8,17 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('criteria', function (Blueprint $table) {
+        Schema::create('alternatives', function (Blueprint $table) {
             $table->id();
-            $table->string('code')->unique();
             $table->string('name');
             $table->text('description')->nullable();
+            $table->string('icon')->nullable();
+            $table->enum('life_phase', ['siswa', 'mahasiswa', 'pekerja', 'umum'])->default('umum');
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('criteria');
+        Schema::dropIfExists('alternatives');
     }
 };

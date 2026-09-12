@@ -8,17 +8,16 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('alternatives', function (Blueprint $table) {
+        Schema::create('test_results', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->text('description')->nullable();
-            $table->enum('life_phase', ['siswa', 'mahasiswa', 'pekerja', 'umum'])->default('umum');
+            $table->foreignId('test_session_id')->unique()->constrained('test_sessions')->cascadeOnDelete();
+            $table->text('summary')->nullable();
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('alternatives');
+        Schema::dropIfExists('test_results');
     }
 };

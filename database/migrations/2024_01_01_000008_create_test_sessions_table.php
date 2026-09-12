@@ -8,17 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('ai_chat_sessions', function (Blueprint $table) {
+        Schema::create('test_sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('test_session_id')->nullable()->constrained('test_sessions')->nullOnDelete();
+            $table->enum('life_phase', ['siswa', 'mahasiswa', 'pekerja']);
+            $table->enum('status', ['in_progress', 'completed'])->default('in_progress');
             $table->timestamp('started_at');
+            $table->timestamp('completed_at')->nullable();
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('ai_chat_sessions');
+        Schema::dropIfExists('test_sessions');
     }
 };

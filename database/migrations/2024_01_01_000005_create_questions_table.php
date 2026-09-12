@@ -12,6 +12,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('sub_criteria_id')->constrained('sub_criteria')->cascadeOnDelete();
             $table->text('question_text');
+            $table->unsignedSmallInteger('order')->default(0);
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
     }

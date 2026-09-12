@@ -14,6 +14,9 @@ return new class extends Migration
             $table->string('license_number');
             $table->string('specialization');
             $table->text('bio')->nullable();
+            $table->string('photo')->nullable();
+            $table->unsignedSmallInteger('years_of_experience')->nullable();
+            $table->boolean('is_available')->default(true);
             $table->boolean('is_verified')->default(false);
             $table->timestamps();
         });

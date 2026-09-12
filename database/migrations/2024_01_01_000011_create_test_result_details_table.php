@@ -8,19 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('alternative_profiles', function (Blueprint $table) {
+        Schema::create('test_result_details', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('test_result_id')->constrained('test_results')->cascadeOnDelete();
             $table->foreignId('alternative_id')->constrained('alternatives')->cascadeOnDelete();
-            $table->foreignId('sub_criteria_id')->constrained('sub_criteria')->cascadeOnDelete();
-            $table->decimal('ideal_score', 4, 2);
+            $table->decimal('score', 6, 4);
+            $table->unsignedTinyInteger('rank');
             $table->timestamps();
 
-            $table->unique(['alternative_id', 'sub_criteria_id']);
+            $table->unique(['test_result_id', 'alternative_id']);
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('alternative_profiles');
+        Schema::dropIfExists('test_result_details');
     }
 };

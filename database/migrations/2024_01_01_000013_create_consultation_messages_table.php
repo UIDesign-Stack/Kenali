@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('consultation_id')->constrained('consultations')->cascadeOnDelete();
             $table->foreignId('sender_id')->constrained('users')->cascadeOnDelete();
             $table->text('message');
+            $table->boolean('is_read')->default(false);
             $table->timestamp('sent_at');
             $table->timestamps();
         });
