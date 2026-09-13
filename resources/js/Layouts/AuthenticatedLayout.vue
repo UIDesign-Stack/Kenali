@@ -41,25 +41,34 @@ const showingNavigationDropdown = ref(false);
                                 </NavLink>
 
                                 <NavLink
-                                    :href="route('admin.ahp.criteria.index')"
-                                    :active="route().current('admin.ahp.*')"
+                                    :href="route('tests.index')"
+                                    :active="route().current('tests.*')"
                                 >
-                                    Bobot AHP
+                                    Tes Saya
                                 </NavLink>
 
-                                <NavLink
-                                    :href="route('admin.questions.index')"
-                                    :active="route().current('admin.questions.*')"
-                                >
-                                    Bank Soal
-                                </NavLink>
+                                <template v-if="$page.props.auth.user?.roles?.includes('admin')">
+                                    <NavLink
+                                        :href="route('admin.ahp.criteria.index')"
+                                        :active="route().current('admin.ahp.*')"
+                                    >
+                                        Bobot AHP
+                                    </NavLink>
 
-                                <NavLink
-                                    :href="route('admin.alternatives.index')"
-                                    :active="route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*')"
-                                >
-                                    Alternatif
-                                </NavLink>
+                                    <NavLink
+                                        :href="route('admin.questions.index')"
+                                        :active="route().current('admin.questions.*')"
+                                    >
+                                        Bank Soal
+                                    </NavLink>
+
+                                    <NavLink
+                                        :href="route('admin.alternatives.index')"
+                                        :active="route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*')"
+                                    >
+                                        Alternatif
+                                    </NavLink>
+                                </template>
                             </div>
                         </div>
 
@@ -169,25 +178,34 @@ const showingNavigationDropdown = ref(false);
                         </ResponsiveNavLink>
 
                         <ResponsiveNavLink
-                            :href="route('admin.ahp.criteria.index')"
-                            :active="route().current('admin.ahp.*')"
+                            :href="route('tests.index')"
+                            :active="route().current('tests.*')"
                         >
-                            Bobot AHP
+                            Tes Saya
                         </ResponsiveNavLink>
 
-                        <ResponsiveNavLink
-                            :href="route('admin.questions.index')"
-                            :active="route().current('admin.questions.*')"
-                        >
-                            Bank Soal
-                        </ResponsiveNavLink>
+                        <template v-if="$page.props.auth.user?.roles?.includes('admin')">
+                            <ResponsiveNavLink
+                                :href="route('admin.ahp.criteria.index')"
+                                :active="route().current('admin.ahp.*')"
+                            >
+                                Bobot AHP
+                            </ResponsiveNavLink>
 
-                        <ResponsiveNavLink
-                            :href="route('admin.alternatives.index')"
-                            :active="route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*')"
-                        >
-                            Alternatif
-                        </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                :href="route('admin.questions.index')"
+                                :active="route().current('admin.questions.*')"
+                            >
+                                Bank Soal
+                            </ResponsiveNavLink>
+
+                            <ResponsiveNavLink
+                                :href="route('admin.alternatives.index')"
+                                :active="route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*')"
+                            >
+                                Alternatif
+                            </ResponsiveNavLink>
+                        </template>
                     </div>
 
                     <!-- Responsive Settings Options -->
