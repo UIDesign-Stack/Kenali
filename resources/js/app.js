@@ -9,11 +9,11 @@ import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 router.on('start', () => {
-    document.getElementById('app')?.classList.add('page-loading');
+    document.getElementById('page-skeleton')?.classList.add('active');
 });
 
 router.on('finish', () => {
-    document.getElementById('app')?.classList.remove('page-loading');
+    document.getElementById('page-skeleton')?.classList.remove('active');
 });
 
 createInertiaApp({
@@ -28,11 +28,5 @@ createInertiaApp({
             .use(plugin)
             .use(ZiggyVue)
             .mount(el);
-    },
-    progress: {
-        color: '#0d9488',
-        delay: 100,
-        includeCSS: false,
-        showSpinner: false,
     },
 });

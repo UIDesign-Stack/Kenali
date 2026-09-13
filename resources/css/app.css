@@ -2,39 +2,319 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Progress bar tipis di atas ===== */
-#nprogress {
-    pointer-events: none;
-}
+/* ===== Skeleton overlay ala YouTube ===== */
+/* ================================
+   DASHBOARD SKELETON LOADING
+================================ */
 
-#nprogress .bar {
+.page-skeleton {
     position: fixed;
+    inset: 0;
     z-index: 9999;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 3px;
-    background: #0d9488;
-    transition: width 400ms cubic-bezier(0.25, 0.1, 0.25, 1);
-}
-
-#nprogress .peg {
-    display: block;
-    position: absolute;
-    right: 0px;
-    width: 100px;
-    height: 100%;
-    box-shadow: 0 0 10px #0d9488, 0 0 5px #0d9488;
-    opacity: 1;
-    transform: rotate(3deg) translate(0px, -4px);
-}
-
-/* ===== Halaman lama meredup selama navigasi, baru muncul normal saat siap ===== */
-#app {
+    background: #fff;
+    opacity: 0;
+    visibility: hidden;
     transition: opacity 150ms ease-out;
+    overflow: hidden;
 }
 
-#app.page-loading {
-    opacity: 0.6;
-    pointer-events: none;
+.page-skeleton.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* ================================
+   NAVBAR
+================================ */
+
+.skeleton-navbar {
+    height: 60px;
+    width: calc(100% - 80px);
+    max-width: 1400px;
+    margin: 0 auto;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 28px;
+}
+
+.skeleton-logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 6px;
+}
+
+.skeleton-nav-item {
+    width: 70px;
+    height: 12px;
+    border-radius: 4px;
+}
+
+.skeleton-nav-item:nth-child(2) {
+    width: 75px;
+}
+
+.skeleton-nav-item:nth-child(3) {
+    width: 65px;
+}
+
+.skeleton-nav-item:nth-child(4) {
+    width: 65px;
+}
+
+.skeleton-nav-item:nth-child(5) {
+    width: 70px;
+}
+
+.skeleton-nav-item:nth-child(6) {
+    width: 35px;
+}
+
+.skeleton-nav-item:nth-child(7) {
+    width: 55px;
+}
+
+.skeleton-admin {
+    width: 70px;
+    height: 12px;
+    border-radius: 4px;
+    margin-left: auto;
+}
+
+/* ================================
+   HEADER
+================================ */
+
+.skeleton-page-header {
+    height: 76px;
+    width: calc(100% - 80px);
+    max-width: 1400px;
+    margin: 0 auto;
+    border-bottom: 1px solid #e5e7eb;
+
+    display: flex;
+    align-items: center;
+
+    padding: 0 10px;
+}
+
+.skeleton-title {
+    width: 105px;
+    height: 18px;
+    border-radius: 4px;
+}
+
+/* ================================
+   CONTENT
+================================ */
+
+.skeleton-content {
+    width: 848px;
+    max-width: calc(100% - 40px);
+    margin: 56px auto 32px;
+}
+
+/* ================================
+   STATISTIC CARDS
+================================ */
+
+.skeleton-statistics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.skeleton-stat-card {
+    height: 101px;
+    border: 1px solid #e1e5ea;
+    border-radius: 7px;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.skeleton-stat-number {
+    width: 20px;
+    height: 22px;
+    border-radius: 4px;
+}
+
+.skeleton-stat-title {
+    width: 80px;
+    height: 10px;
+    border-radius: 4px;
+}
+
+.skeleton-stat-subtitle {
+    width: 55px;
+    height: 8px;
+    border-radius: 4px;
+}
+
+/* ================================
+   SECTION
+================================ */
+
+.skeleton-section {
+    margin-top: 34px;
+}
+
+.skeleton-section-title {
+    width: 270px;
+    height: 13px;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+/* ================================
+   RECOMMENDATION BARS
+================================ */
+
+.skeleton-recommendation {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.skeleton-recommendation-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.skeleton-recommendation-label {
+    width: 110px;
+    height: 9px;
+    border-radius: 4px;
+}
+
+.skeleton-progress {
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+}
+
+.skeleton-progress.short {
+    width: 17%;
+}
+
+/* ================================
+   AKTIVITAS TERBARU
+================================ */
+
+.skeleton-activity {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.skeleton-activity-item {
+    height: 50px;
+    border: 1px solid #e1e5ea;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+}
+
+.skeleton-user {
+    width: 45px;
+    height: 10px;
+    border-radius: 4px;
+}
+
+.skeleton-user-role {
+    width: 48px;
+    height: 10px;
+    border-radius: 4px;
+    margin-left: 8px;
+}
+
+.skeleton-status {
+    width: 46px;
+    height: 25px;
+    border-radius: 15px;
+    margin-left: auto;
+}
+
+.skeleton-date {
+    width: 75px;
+    height: 10px;
+    border-radius: 4px;
+    margin-left: 12px;
+}
+
+/* ================================
+   SHIMMER
+================================ */
+
+.skeleton-logo,
+.skeleton-nav-item,
+.skeleton-admin,
+.skeleton-title,
+.skeleton-stat-number,
+.skeleton-stat-title,
+.skeleton-stat-subtitle,
+.skeleton-section-title,
+.skeleton-recommendation-label,
+.skeleton-progress,
+.skeleton-user,
+.skeleton-user-role,
+.skeleton-status,
+.skeleton-date {
+
+    background: linear-gradient(90deg,
+            #e9ecef 0%,
+            #f8f9fa 50%,
+            #e9ecef 100%);
+
+    background-size: 200% 100%;
+
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* ================================
+   RESPONSIVE
+================================ */
+
+@media (max-width: 900px) {
+
+    .skeleton-content {
+        width: calc(100% - 40px);
+    }
+
+    .skeleton-statistics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .skeleton-navbar {
+        gap: 15px;
+    }
+}
+
+@media (max-width: 600px) {
+
+    .skeleton-statistics {
+        grid-template-columns: 1fr;
+    }
+
+    .skeleton-nav-item {
+        display: none;
+    }
+
+    .skeleton-content {
+        margin-top: 30px;
+    }
 }
