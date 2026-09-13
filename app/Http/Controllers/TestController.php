@@ -6,32 +6,35 @@ use App\Models\Question;
 use App\Models\TestSession;
 use App\Services\TopsisService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class TestController extends Controller
 {
     public function __construct(protected TopsisService $topsisService) {}
 
-    /**
-     * Riwayat semua sesi tes milik user, terbaru dulu.
-     */
     public function index(Request $request)
     {
         $sessions = $request->user()
             ->testSessions()
-            ->with(['result.details' => fn ($q) => $q->orderBy('rank')->limit(1)->with('alternative:id,name')])
+            ->with([
+                'result.details' => fn ($q) => $q->orderBy('rank')->with('alternative:id,name'),
+            ])
             ->latest('started_at')
-            ->get();
+            ->get()
+            ->each(function ($session) {
+                if ($session->result) {
+                    $session->result->setRelation('topDetail', $session->result->details->first());
+                    $session->result->unsetRelation('details');
+                }
+            });
 
         return Inertia::render('Tests/Index', [
             'sessions' => $sessions,
         ]);
     }
 
-    /**
-     * Halaman awal: cek apakah user punya sesi tes yang belum selesai,
-     * atau tampilkan pilihan untuk mulai tes baru.
-     */
     public function create(Request $request)
     {
         $inProgressSession = $request->user()
@@ -46,9 +49,6 @@ class TestController extends Controller
         ]);
     }
 
-    /**
-     * Buat sesi tes baru untuk fase hidup yang dipilih.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -64,14 +64,10 @@ class TestController extends Controller
         return redirect()->route('tests.show', $session->id);
     }
 
-    /**
-     * Halaman pengisian soal untuk satu sesi tes.
-     */
     public function show(TestSession $testSession, Request $request)
     {
-        abort_if($testSession->user_id !== $request->user()->id, 403);
+        $this->authorizeOwnership($testSession, $request);
 
-        // Kalau sesi sudah selesai, tampilkan halaman hasil
         if ($testSession->status === 'completed') {
             $result = $testSession->result()
                 ->with(['details' => fn ($q) => $q->with('alternative')->orderBy('rank')])
@@ -105,12 +101,9 @@ class TestController extends Controller
         ]);
     }
 
-    /**
-     * Simpan/perbarui satu jawaban (dipanggil tiap kali user memilih skala).
-     */
     public function saveAnswer(Request $request, TestSession $testSession)
     {
-        abort_if($testSession->user_id !== $request->user()->id, 403);
+        $this->authorizeOwnership($testSession, $request);
         abort_if($testSession->status !== 'in_progress', 422, 'Sesi tes ini sudah tidak aktif.');
 
         $validated = $request->validate([
@@ -126,20 +119,16 @@ class TestController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /**
-     * Coba hitung ulang hasil TOPSIS untuk sesi yang sudah selesai
-     * tapi gagal dihitung sebelumnya (misal karena bobot AHP belum lengkap saat itu).
-     */
     public function recalculate(Request $request, TestSession $testSession)
     {
-        abort_if($testSession->user_id !== $request->user()->id, 403);
+        $this->authorizeOwnership($testSession, $request);
         abort_if($testSession->status !== 'completed', 422, 'Sesi ini belum selesai dikerjakan.');
 
-        // Hapus hasil lama kalau ada (misal hasil kosong dari percobaan gagal sebelumnya)
-        $testSession->result?->delete();
-
         try {
-            $this->generateResult($testSession);
+            DB::transaction(function () use ($testSession) {
+                $testSession->result?->delete();
+                $this->generateResult($testSession);
+            });
 
             return redirect()->route('tests.show', $testSession->id)
                 ->with('success', 'Hasil berhasil dihitung ulang.');
@@ -150,12 +139,15 @@ class TestController extends Controller
         }
     }
 
-    /**
-     * Tandai sesi tes selesai, lalu hitung hasil TOPSIS.
-     */
     public function complete(Request $request, TestSession $testSession)
     {
-        abort_if($testSession->user_id !== $request->user()->id, 403);
+        $this->authorizeOwnership($testSession, $request);
+
+        if ($testSession->status === 'completed') {
+            return redirect()->route('tests.show', $testSession->id);
+        }
+
+        abort_if($testSession->status !== 'in_progress', 422, 'Sesi ini tidak bisa diselesaikan.');
 
         $totalActiveQuestions = Question::where('is_active', true)->count();
         $totalAnswered = $testSession->answers()->count();
@@ -166,41 +158,50 @@ class TestController extends Controller
             ]);
         }
 
-        $testSession->update([
-            'status'       => 'completed',
-            'completed_at' => now(),
-        ]);
+        DB::transaction(function () use ($testSession) {
+            $locked = TestSession::whereKey($testSession->id)->lockForUpdate()->first();
 
-        try {
-            $this->generateResult($testSession);
-        } catch (\RuntimeException $e) {
-            // Kalau data bobot/alternatif belum lengkap, tes tetap ditandai selesai,
-            // tapi hasil belum bisa dihitung -- ini akan terlihat sebagai "hasil belum tersedia".
-            \Log::warning('TOPSIS gagal dihitung untuk sesi #'.$testSession->id.': '.$e->getMessage());
-        }
+            if ($locked->status === 'completed') {
+                return;
+            }
+
+            $locked->update([
+                'status'       => 'completed',
+                'completed_at' => now(),
+            ]);
+
+            try {
+                $this->generateResult($locked);
+            } catch (\RuntimeException $e) {
+                Log::warning('TOPSIS gagal dihitung untuk sesi #'.$locked->id.': '.$e->getMessage());
+            }
+        });
 
         return redirect()->route('tests.show', $testSession->id)
             ->with('success', 'Tes selesai! Berikut hasil rekomendasimu.');
     }
 
-    /**
-     * Jalankan TOPSIS dan simpan hasilnya ke database.
-     */
     protected function generateResult(TestSession $testSession): void
     {
         $rawResults = $this->topsisService->calculate($testSession);
 
-        // Urutkan berdasarkan skor tertinggi -> beri rank
         usort($rawResults, fn ($a, $b) => $b['score'] <=> $a['score']);
 
-        $testResult = $testSession->result()->create([]);
+        DB::transaction(function () use ($testSession, $rawResults) {
+            $testResult = $testSession->result()->create([]);
 
-        foreach ($rawResults as $index => $row) {
-            $testResult->details()->create([
-                'alternative_id' => $row['alternative_id'],
-                'score'          => $row['score'],
-                'rank'           => $index + 1,
-            ]);
-        }
+            foreach ($rawResults as $index => $row) {
+                $testResult->details()->create([
+                    'alternative_id' => $row['alternative_id'],
+                    'score'          => $row['score'],
+                    'rank'           => $index + 1,
+                ]);
+            }
+        });
+    }
+
+    private function authorizeOwnership(TestSession $testSession, Request $request): void
+    {
+        abort_if($testSession->user_id !== $request->user()->id, 403);
     }
 }

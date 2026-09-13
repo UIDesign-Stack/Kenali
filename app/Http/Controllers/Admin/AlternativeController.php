@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\LifePhase;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AlternativeRequest;
 use App\Models\Alternative;
-use Illuminate\Http\Request;
+use App\Models\SubCriteria;
 use Inertia\Inertia;
 
 class AlternativeController extends Controller
@@ -16,25 +18,22 @@ class AlternativeController extends Controller
             ->get();
 
         return Inertia::render('Admin/Alternatives/Index', [
-            'alternatives' => $alternatives,
+            'alternatives'     => $alternatives,
+            'lifePhaseOptions' => LifePhase::options(),
+            'totalSubCriteria' => SubCriteria::count(),
         ]);
     }
 
     public function create()
     {
-        return Inertia::render('Admin/Alternatives/Create');
+        return Inertia::render('Admin/Alternatives/Create', [
+            'lifePhaseOptions' => LifePhase::options(),
+        ]);
     }
 
-    public function store(Request $request)
+    public function store(AlternativeRequest $request)
     {
-        $validated = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:2000'],
-            'icon'        => ['nullable', 'string', 'max:255'],
-            'life_phase'  => ['required', 'in:siswa,mahasiswa,pekerja,umum'],
-        ]);
-
-        $alternative = Alternative::create($validated);
+        $alternative = Alternative::create($request->validated());
 
         return redirect()
             ->route('admin.alternatives.index')
@@ -44,20 +43,14 @@ class AlternativeController extends Controller
     public function edit(Alternative $alternative)
     {
         return Inertia::render('Admin/Alternatives/Edit', [
-            'alternative' => $alternative,
+            'alternative'      => $alternative,
+            'lifePhaseOptions' => LifePhase::options(),
         ]);
     }
 
-    public function update(Request $request, Alternative $alternative)
+    public function update(AlternativeRequest $request, Alternative $alternative)
     {
-        $validated = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:2000'],
-            'icon'        => ['nullable', 'string', 'max:255'],
-            'life_phase'  => ['required', 'in:siswa,mahasiswa,pekerja,umum'],
-        ]);
-
-        $alternative->update($validated);
+        $alternative->update($request->validated());
 
         return redirect()
             ->route('admin.alternatives.index')
@@ -68,7 +61,9 @@ class AlternativeController extends Controller
     {
         $alternative->update(['is_active' => ! $alternative->is_active]);
 
-        return back()->with('success', 'Status alternatif diperbarui.');
+        $status = $alternative->is_active ? 'diaktifkan' : 'dinonaktifkan';
+
+        return back()->with('success', "Alternatif \"{$alternative->name}\" berhasil {$status}.");
     }
 
     public function destroy(Alternative $alternative)

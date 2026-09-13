@@ -11,6 +11,11 @@ const statusLabel = {
     completed: 'Selesai',
 };
 
+const statusColor = {
+    completed: 'bg-green-100 text-green-700',
+    in_progress: 'bg-amber-100 text-amber-700',
+};
+
 const lifePhaseLabel = {
     siswa: 'Siswa',
     mahasiswa: 'Mahasiswa',
@@ -22,7 +27,12 @@ function topAlternativeName(session) {
 }
 
 function formatDate(dateStr) {
-    return new Date(dateStr).toLocaleDateString('id-ID', {
+    if (!dateStr) return '-';
+
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+
+    return date.toLocaleDateString('id-ID', {
         day: 'numeric', month: 'long', year: 'numeric',
     });
 }
@@ -61,16 +71,14 @@ function formatDate(dateStr) {
                     class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition"
                 >
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-semibold text-gray-800 capitalize">
-                            {{ lifePhaseLabel[session.life_phase] }}
+                        <span class="text-sm font-semibold text-gray-800">
+                            {{ lifePhaseLabel[session.life_phase] ?? session.life_phase }}
                         </span>
                         <span
                             class="text-[10px] px-2 py-0.5 rounded-full"
-                            :class="session.status === 'completed'
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-amber-100 text-amber-700'"
+                            :class="statusColor[session.status] ?? 'bg-gray-100 text-gray-500'"
                         >
-                            {{ statusLabel[session.status] }}
+                            {{ statusLabel[session.status] ?? session.status }}
                         </span>
                     </div>
 

@@ -9,7 +9,6 @@ const props = defineProps({
     existingScores: { type: Object, required: true },
 });
 
-// Inisialisasi skor: pakai nilai lama kalau ada, default 3 (netral) kalau belum pernah diisi
 const scores = reactive({});
 props.criteria.forEach((crit) => {
     crit.sub_criteria.forEach((sub) => {
@@ -18,9 +17,16 @@ props.criteria.forEach((crit) => {
 });
 
 const saving = ref(false);
+const errorMessage = ref('');
 
 function submit() {
+    if (!props.criteria.length) {
+        errorMessage.value = 'Tidak ada kriteria untuk disimpan.';
+        return;
+    }
+
     saving.value = true;
+    errorMessage.value = '';
 
     const payload = Object.entries(scores).map(([subCriteriaId, idealScore]) => ({
         sub_criteria_id: Number(subCriteriaId),
@@ -30,6 +36,9 @@ function submit() {
     router.put(route('admin.alternative-profiles.update', props.alternative.id), {
         scores: payload,
     }, {
+        onError: (errors) => {
+            errorMessage.value = Object.values(errors).flat().join(' ') || 'Gagal menyimpan profil ideal.';
+        },
         onFinish: () => (saving.value = false),
     });
 }
@@ -55,7 +64,11 @@ function submit() {
                 <strong>{{ alternative.name }}</strong>.
             </p>
 
-            <div class="space-y-10">
+            <div v-if="errorMessage" class="mb-6 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+                {{ errorMessage }}
+            </div>
+
+            <form @submit.prevent="submit" class="space-y-10">
                 <div v-for="crit in criteria" :key="crit.id">
                     <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
                         {{ crit.name }}
@@ -64,15 +77,20 @@ function submit() {
                     <div class="space-y-5">
                         <div v-for="sub in crit.sub_criteria" :key="sub.id">
                             <div class="flex items-center justify-between mb-1">
-                                <label class="text-sm font-medium text-gray-700">{{ sub.name }}</label>
+                                <label :for="`sub-${sub.id}`" class="text-sm font-medium text-gray-700">
+                                    {{ sub.name }}
+                                </label>
                                 <span class="text-sm font-semibold text-teal-600">{{ scores[sub.id] }}</span>
                             </div>
                             <input
+                                :id="`sub-${sub.id}`"
                                 v-model.number="scores[sub.id]"
                                 type="range"
                                 min="1"
                                 max="5"
                                 step="1"
+                                :aria-label="sub.name"
+                                :aria-valuetext="`${scores[sub.id]} dari 5`"
                                 class="w-full accent-teal-600"
                             />
                             <div class="flex justify-between text-[10px] text-gray-400 mt-1">
@@ -83,16 +101,15 @@ function submit() {
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <button
-                type="button"
-                :disabled="saving"
-                @click="submit"
-                class="mt-10 px-5 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
-            >
-                {{ saving ? 'Menyimpan…' : 'Simpan Profil Ideal' }}
-            </button>
+                <button
+                    type="submit"
+                    :disabled="saving"
+                    class="mt-2 px-5 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
+                >
+                    {{ saving ? 'Menyimpan…' : 'Simpan Profil Ideal' }}
+                </button>
+            </form>
         </div>
     </AuthenticatedLayout>
 </template>

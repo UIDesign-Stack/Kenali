@@ -1,6 +1,6 @@
 <script setup>
 import { router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -11,8 +11,11 @@ const props = defineProps({
 const retrying = ref(false);
 const retryError = ref(null);
 
+const hasResult = computed(() => props.result && props.result.details?.length > 0);
+
 function scorePercent(score) {
-    return Math.round(score * 100);
+    const num = Number(score);
+    return Number.isFinite(num) ? Math.round(num * 100) : 0;
 }
 
 function retryCalculation() {
@@ -21,7 +24,7 @@ function retryCalculation() {
 
     router.post(route('tests.recalculate', props.testSession.id), {}, {
         onError: (errors) => {
-            retryError.value = errors.recalculate ?? 'Gagal menghitung ulang.';
+            retryError.value = errors.recalculate ?? errors.message ?? 'Gagal menghitung ulang.';
         },
         onFinish: () => (retrying.value = false),
     });
@@ -36,12 +39,12 @@ function retryCalculation() {
 
         <div class="max-w-xl mx-auto p-6">
             <div class="text-center mb-8">
-                <p class="text-2xl mb-1">🎉</p>
+                <p class="text-2xl mb-1">{{ hasResult ? '🎉' : '⏳' }}</p>
                 <p class="text-sm text-gray-500">Tes untuk fase</p>
                 <p class="text-lg font-semibold text-gray-800 capitalize">{{ testSession.life_phase }}</p>
             </div>
 
-            <div v-if="!result || result.details.length === 0" class="p-6 border border-amber-200 bg-amber-50 rounded-lg text-center">
+            <div v-if="!hasResult" class="p-6 border border-amber-200 bg-amber-50 rounded-lg text-center">
                 <p class="text-sm text-amber-700 mb-4">
                     Hasil belum bisa dihitung. Kemungkinan bobot AHP atau data
                     alternatif belum lengkap di sistem saat itu.
@@ -74,11 +77,13 @@ function retryCalculation() {
                             >
                                 {{ detail.rank }}
                             </span>
-                            <span class="text-sm font-semibold text-gray-800">{{ detail.alternative.name }}</span>
+                            <span class="text-sm font-semibold text-gray-800">
+                                {{ detail.alternative?.name ?? 'Data tidak tersedia' }}
+                            </span>
                         </div>
                         <span class="text-sm font-medium text-teal-600">{{ scorePercent(detail.score) }}%</span>
                     </div>
-                    <p v-if="detail.alternative.description" class="text-xs text-gray-500 ml-8">
+                    <p v-if="detail.alternative?.description" class="text-xs text-gray-500 ml-8">
                         {{ detail.alternative.description }}
                     </p>
                     <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2 ml-8">

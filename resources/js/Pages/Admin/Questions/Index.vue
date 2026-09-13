@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Link } from '@inertiajs/vue3';
 
-defineProps({
+const props = defineProps({
     criteria: { type: Array, required: true },
 });
 </script>
@@ -14,12 +14,20 @@ defineProps({
         </template>
 
         <div class="max-w-3xl mx-auto p-6 space-y-8">
-            <div v-for="crit in criteria" :key="crit.id">
+            <div v-if="!criteria.length" class="text-sm text-gray-400 text-center py-16">
+                Belum ada kriteria yang tersedia.
+            </div>
+
+            <div v-for="crit in criteria" v-else :key="crit.id">
                 <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
                     {{ crit.name }}
                 </h2>
 
-                <div class="space-y-2">
+                <div v-if="!crit.sub_criteria.length" class="text-xs text-gray-400 italic px-1">
+                    Belum ada sub-kriteria.
+                </div>
+
+                <div v-else class="space-y-2">
                     <Link
                         v-for="sub in crit.sub_criteria"
                         :key="sub.id"
@@ -32,6 +40,7 @@ defineProps({
                             :class="sub.questions_count > 0
                                 ? 'bg-teal-100 text-teal-700'
                                 : 'bg-amber-100 text-amber-700'"
+                            :aria-label="`${sub.questions_count} soal tersedia`"
                         >
                             {{ sub.questions_count }} soal
                         </span>

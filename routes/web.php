@@ -9,6 +9,11 @@ use App\Http\Controllers\Admin\QuestionController;
 use App\Http\Controllers\Admin\AlternativeController;
 use App\Http\Controllers\Admin\AlternativeProfileController;
 use App\Http\Controllers\TestController;
+use App\Http\Controllers\Admin\PsychologistManagementController;
+use App\Http\Controllers\Admin\UserManagementController;
+use App\Http\Controllers\ConsultationController;
+use App\Http\Controllers\PsychologistConsultationController;
+use App\Http\Controllers\DashboardController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -19,11 +24,11 @@ Route::get('/', function () {
     ]);
 });
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
 
-Route::middleware(['auth','verified'])->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -32,12 +37,31 @@ Route::middleware(['auth','verified'])->group(function () {
     Route::get('/tests/create', [TestController::class, 'create'])->name('tests.create');
     Route::post('/tests', [TestController::class, 'store'])->name('tests.store');
     Route::get('/tests/{testSession}', [TestController::class, 'show'])->name('tests.show');
-    Route::post('/tests/{testSession}/answers', [TestController::class, 'saveAnswer'])->name('tests.answers.save');
+
+    Route::middleware('throttle:120,1')->group(function () {
+        Route::post('/tests/{testSession}/answers', [TestController::class, 'saveAnswer'])->name('tests.answers.save');
+    });
+
     Route::post('/tests/{testSession}/complete', [TestController::class, 'complete'])->name('tests.complete');
     Route::post('/tests/{testSession}/recalculate', [TestController::class, 'recalculate'])->name('tests.recalculate');
+
+    // Sisi user: ajukan & pantau konsultasi
+    Route::get('/consultations', [ConsultationController::class, 'index'])->name('consultations.index');
+    Route::get('/consultations/create', [ConsultationController::class, 'create'])->name('consultations.create');
+    Route::post('/consultations', [ConsultationController::class, 'store'])->name('consultations.store');
+    Route::get('/consultations/{consultation}', [ConsultationController::class, 'show'])->name('consultations.show');
+    Route::post('/consultations/{consultation}/messages', [ConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+
+    // Sisi psikolog: kelola konsultasi yang masuk
+    Route::middleware('role:psikolog')->prefix('psikolog')->name('psikolog.')->group(function () {
+        Route::get('/consultations', [PsychologistConsultationController::class, 'index'])->name('consultations.index');
+        Route::get('/consultations/{consultation}', [PsychologistConsultationController::class, 'show'])->name('consultations.show');
+        Route::patch('/consultations/{consultation}/status', [PsychologistConsultationController::class, 'updateStatus'])->name('consultations.update-status');
+        Route::post('/consultations/{consultation}/messages', [PsychologistConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+    });
 });
 
-Route::middleware(['auth', 'verified','role:admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
 
     // Modul Bobot AHP
     Route::get('/ahp/criteria', [AhpController::class, 'criteriaIndex'])->name('ahp.criteria.index');
@@ -66,6 +90,17 @@ Route::middleware(['auth', 'verified','role:admin'])->prefix('admin')->name('adm
     // Modul Profil Ideal Alternatif
     Route::get('/alternatives/{alternative}/profile', [AlternativeProfileController::class, 'edit'])->name('alternative-profiles.edit');
     Route::put('/alternatives/{alternative}/profile', [AlternativeProfileController::class, 'update'])->name('alternative-profiles.update');
+
+    // Manajemen User
+    Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+    Route::get('/users/{user}', [UserManagementController::class, 'show'])->name('users.show');
+    Route::patch('/users/{user}/toggle-active', [UserManagementController::class, 'toggleActive'])->name('users.toggle-active');
+
+    // Manajemen Psikolog
+    Route::get('/psychologists', [PsychologistManagementController::class, 'index'])->name('psychologists.index');
+    Route::patch('/psychologists/{psychologistProfile}/toggle-verified', [PsychologistManagementController::class, 'toggleVerified'])->name('psychologists.toggle-verified');
+    Route::patch('/psychologists/{psychologistProfile}/toggle-available', [PsychologistManagementController::class, 'toggleAvailable'])->name('psychologists.toggle-available');
+
 });
 
 require __DIR__.'/auth.php';

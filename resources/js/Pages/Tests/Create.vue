@@ -18,6 +18,13 @@ const options = [
 ];
 
 function submit() {
+    if (props.inProgressSession) {
+        const confirmed = confirm(
+            'Kamu masih punya tes yang belum selesai. Yakin ingin mulai tes baru?'
+        );
+        if (!confirmed) return;
+    }
+
     form.post(route('tests.store'));
 }
 </script>
@@ -41,31 +48,36 @@ function submit() {
                 </Link>
             </div>
 
-            <p class="text-sm text-gray-500 mb-6">
+            <p id="life-phase-desc" class="text-sm text-gray-500 mb-6">
                 Pilih kondisi yang paling menggambarkan dirimu sekarang, supaya rekomendasi
                 yang kamu dapat nanti lebih relevan.
             </p>
 
             <form @submit.prevent="submit" class="space-y-3">
-                <label
-                    v-for="option in options"
-                    :key="option.value"
-                    class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition"
-                    :class="form.life_phase === option.value
-                        ? 'border-teal-500 bg-teal-50'
-                        : 'border-gray-200 hover:border-teal-300'"
-                >
-                    <input
-                        type="radio"
-                        v-model="form.life_phase"
-                        :value="option.value"
-                        class="mt-1 text-teal-600 focus:ring-teal-500"
-                    />
-                    <div>
-                        <p class="text-sm font-medium text-gray-800">{{ option.label }}</p>
-                        <p class="text-xs text-gray-500 mt-0.5">{{ option.desc }}</p>
-                    </div>
-                </label>
+                <fieldset aria-describedby="life-phase-desc">
+                    <legend class="sr-only">Pilih fase hidupmu saat ini</legend>
+
+                    <label
+                        v-for="option in options"
+                        :key="option.value"
+                        class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition mb-3"
+                        :class="form.life_phase === option.value
+                            ? 'border-teal-500 bg-teal-50'
+                            : 'border-gray-200 hover:border-teal-300'"
+                    >
+                        <input
+                            type="radio"
+                            v-model="form.life_phase"
+                            name="life_phase"
+                            :value="option.value"
+                            class="mt-1 text-teal-600 focus:ring-teal-500"
+                        />
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">{{ option.label }}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">{{ option.desc }}</p>
+                        </div>
+                    </label>
+                </fieldset>
 
                 <p v-if="form.errors.life_phase" class="text-xs text-red-600">{{ form.errors.life_phase }}</p>
 
@@ -74,7 +86,7 @@ function submit() {
                     :disabled="form.processing || !form.life_phase"
                     class="w-full mt-4 px-5 py-3 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                 >
-                    Mulai Tes
+                    {{ form.processing ? 'Memulai…' : 'Mulai Tes' }}
                 </button>
             </form>
         </div>

@@ -1,13 +1,23 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 
+const page = usePage();
 const showingNavigationDropdown = ref(false);
+
+const userRoles = computed(() => page.props.auth.user?.roles ?? []);
+const isUser = computed(() => userRoles.value.includes('user'));
+const isPsikolog = computed(() => userRoles.value.includes('psikolog'));
+const isAdmin = computed(() => userRoles.value.includes('admin'));
+
+function closeMobileNav() {
+    showingNavigationDropdown.value = false;
+}
 </script>
 
 <template>
@@ -47,7 +57,23 @@ const showingNavigationDropdown = ref(false);
                                     Tes Saya
                                 </NavLink>
 
-                                <template v-if="$page.props.auth.user?.roles?.includes('admin')">
+                                <NavLink
+                                    v-if="isUser"
+                                    :href="route('consultations.index')"
+                                    :active="route().current('consultations.*')"
+                                >
+                                    Konsultasi
+                                </NavLink>
+
+                                <NavLink
+                                    v-if="isPsikolog"
+                                    :href="route('psikolog.consultations.index')"
+                                    :active="route().current('psikolog.*')"
+                                >
+                                    Konsultasi Masuk
+                                </NavLink>
+
+                                <template v-if="isAdmin">
                                     <NavLink
                                         :href="route('admin.ahp.criteria.index')"
                                         :active="route().current('admin.ahp.*')"
@@ -68,6 +94,20 @@ const showingNavigationDropdown = ref(false);
                                     >
                                         Alternatif
                                     </NavLink>
+
+                                    <NavLink
+                                        :href="route('admin.users.index')"
+                                        :active="route().current('admin.users.*')"
+                                    >
+                                        User
+                                    </NavLink>
+
+                                    <NavLink
+                                        :href="route('admin.psychologists.index')"
+                                        :active="route().current('admin.psychologists.*')"
+                                    >
+                                        Psikolog
+                                    </NavLink>
                                 </template>
                             </div>
                         </div>
@@ -82,7 +122,7 @@ const showingNavigationDropdown = ref(false);
                                                 type="button"
                                                 class="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none"
                                             >
-                                                {{ $page.props.auth.user.name }}
+                                                {{ page.props.auth.user?.name ?? '' }}
 
                                                 <svg
                                                     class="-me-0.5 ms-2 h-4 w-4"
@@ -121,10 +161,9 @@ const showingNavigationDropdown = ref(false);
                         <!-- Hamburger -->
                         <div class="-me-2 flex items-center sm:hidden">
                             <button
-                                @click="
-                                    showingNavigationDropdown =
-                                        !showingNavigationDropdown
-                                "
+                                @click="showingNavigationDropdown = !showingNavigationDropdown"
+                                :aria-expanded="showingNavigationDropdown"
+                                aria-label="Buka menu navigasi"
                                 class="inline-flex items-center justify-center rounded-md p-2 text-gray-400 transition duration-150 ease-in-out hover:bg-gray-100 hover:text-gray-500 focus:bg-gray-100 focus:text-gray-500 focus:outline-none"
                             >
                                 <svg
@@ -173,6 +212,7 @@ const showingNavigationDropdown = ref(false);
                         <ResponsiveNavLink
                             :href="route('dashboard')"
                             :active="route().current('dashboard')"
+                            @click="closeMobileNav"
                         >
                             Dashboard
                         </ResponsiveNavLink>
@@ -180,14 +220,34 @@ const showingNavigationDropdown = ref(false);
                         <ResponsiveNavLink
                             :href="route('tests.index')"
                             :active="route().current('tests.*')"
+                            @click="closeMobileNav"
                         >
                             Tes Saya
                         </ResponsiveNavLink>
 
-                        <template v-if="$page.props.auth.user?.roles?.includes('admin')">
+                        <ResponsiveNavLink
+                            v-if="isUser"
+                            :href="route('consultations.index')"
+                            :active="route().current('consultations.*')"
+                            @click="closeMobileNav"
+                        >
+                            Konsultasi
+                        </ResponsiveNavLink>
+
+                        <ResponsiveNavLink
+                            v-if="isPsikolog"
+                            :href="route('psikolog.consultations.index')"
+                            :active="route().current('psikolog.*')"
+                            @click="closeMobileNav"
+                        >
+                            Konsultasi Masuk
+                        </ResponsiveNavLink>
+
+                        <template v-if="isAdmin">
                             <ResponsiveNavLink
                                 :href="route('admin.ahp.criteria.index')"
                                 :active="route().current('admin.ahp.*')"
+                                @click="closeMobileNav"
                             >
                                 Bobot AHP
                             </ResponsiveNavLink>
@@ -195,6 +255,7 @@ const showingNavigationDropdown = ref(false);
                             <ResponsiveNavLink
                                 :href="route('admin.questions.index')"
                                 :active="route().current('admin.questions.*')"
+                                @click="closeMobileNav"
                             >
                                 Bank Soal
                             </ResponsiveNavLink>
@@ -202,8 +263,25 @@ const showingNavigationDropdown = ref(false);
                             <ResponsiveNavLink
                                 :href="route('admin.alternatives.index')"
                                 :active="route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*')"
+                                @click="closeMobileNav"
                             >
                                 Alternatif
+                            </ResponsiveNavLink>
+
+                            <ResponsiveNavLink
+                                :href="route('admin.users.index')"
+                                :active="route().current('admin.users.*')"
+                                @click="closeMobileNav"
+                            >
+                                User
+                            </ResponsiveNavLink>
+
+                            <ResponsiveNavLink
+                                :href="route('admin.psychologists.index')"
+                                :active="route().current('admin.psychologists.*')"
+                                @click="closeMobileNav"
+                            >
+                                Psikolog
                             </ResponsiveNavLink>
                         </template>
                     </div>
@@ -216,15 +294,15 @@ const showingNavigationDropdown = ref(false);
                             <div
                                 class="text-base font-medium text-gray-800"
                             >
-                                {{ $page.props.auth.user.name }}
+                                {{ page.props.auth.user?.name ?? '' }}
                             </div>
                             <div class="text-sm font-medium text-gray-500">
-                                {{ $page.props.auth.user.email }}
+                                {{ page.props.auth.user?.email ?? '' }}
                             </div>
                         </div>
 
                         <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.edit')">
+                            <ResponsiveNavLink :href="route('profile.edit')" @click="closeMobileNav">
                                 Profile
                             </ResponsiveNavLink>
                             <ResponsiveNavLink

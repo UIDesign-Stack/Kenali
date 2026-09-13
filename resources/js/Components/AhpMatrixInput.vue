@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
     items: { type: Array, required: true },
@@ -7,8 +7,8 @@ const props = defineProps({
     idField: { type: String, required: true },
 });
 
-// Skala AHP dari kiri (condong ke Item Kiri) ke kanan (condong ke Item Kanan).
-// Urutan disusun agar tombol "sama penting" selalu di tengah.
+const emit = defineEmits(['saved']);
+
 const scaleButtons = [
     { value: 9, label: '9', short: 'Mutlak' },
     { value: 7, label: '7', short: 'Sangat' },
@@ -21,12 +21,23 @@ const scaleButtons = [
     { value: -9, label: '9', short: 'Mutlak' },
 ];
 
-const n = props.items.length;
+const n = computed(() => props.items.length);
 
-const rawInput = ref(
-    Array.from({ length: n }, (_, i) =>
-        Array.from({ length: n }, (_, j) => (i === j ? 1 : null))
-    )
+function buildEmptyMatrix(size) {
+    return Array.from({ length: size }, (_, i) =>
+        Array.from({ length: size }, (_, j) => (i === j ? 1 : null))
+    );
+}
+
+const rawInput = ref(buildEmptyMatrix(n.value));
+
+watch(
+    () => props.items,
+    (newItems, oldItems) => {
+        if (newItems.length !== oldItems?.length) {
+            rawInput.value = buildEmptyMatrix(newItems.length);
+        }
+    }
 );
 
 function scaleToDecimal(value) {
@@ -35,9 +46,10 @@ function scaleToDecimal(value) {
 }
 
 const matrix = computed(() => {
-    const m = Array.from({ length: n }, () => Array(n).fill(1));
-    for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
+    const size = n.value;
+    const m = Array.from({ length: size }, () => Array(size).fill(1));
+    for (let i = 0; i < size; i++) {
+        for (let j = 0; j < size; j++) {
             if (i === j) {
                 m[i][j] = 1;
             } else if (i < j) {
@@ -51,8 +63,9 @@ const matrix = computed(() => {
 });
 
 const isComplete = computed(() => {
-    for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
+    const size = n.value;
+    for (let i = 0; i < size; i++) {
+        for (let j = i + 1; j < size; j++) {
             if (rawInput.value[i][j] === null) return false;
         }
     }
@@ -61,8 +74,9 @@ const isComplete = computed(() => {
 
 const pairs = computed(() => {
     const list = [];
-    for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
+    const size = n.value;
+    for (let i = 0; i < size; i++) {
+        for (let j = i + 1; j < size; j++) {
             list.push({ i, j, itemA: props.items[i], itemB: props.items[j] });
         }
     }
@@ -73,7 +87,6 @@ function selectValue(i, j, value) {
     rawInput.value[i][j] = value;
 }
 
-// Teks bantuan yang berubah sesuai posisi tombol yang dipilih
 function describeChoice(pair, value) {
     if (value === null) return '';
     if (value === 1) return `${pair.itemA.name} dan ${pair.itemB.name} sama penting`;
@@ -81,7 +94,6 @@ function describeChoice(pair, value) {
     return `${pair.itemB.name} lebih penting dari ${pair.itemA.name}`;
 }
 
-// Tooltip lengkap untuk tiap tombol angka saat di-hover
 function describeButton(pair, option) {
     if (option.value === 1) return `${pair.itemA.name} dan ${pair.itemB.name} sama penting`;
     const winner = option.value > 0 ? pair.itemA.name : pair.itemB.name;
@@ -99,20 +111,30 @@ const result = ref(null);
 const errorMessage = ref(null);
 const loading = ref(false);
 
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? null;
+}
+
 async function handleSubmit() {
     errorMessage.value = null;
     result.value = null;
+
+    const csrfToken = getCsrfToken();
+    if (!csrfToken) {
+        errorMessage.value = 'Token keamanan (CSRF) tidak ditemukan. Silakan refresh halaman lalu coba lagi.';
+        return;
+    }
+
     loading.value = true;
 
     try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-
         const res = await fetch(props.submitUrl, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken ?? '',
+                'X-CSRF-TOKEN': csrfToken,
                 'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify({
@@ -120,6 +142,11 @@ async function handleSubmit() {
                 [props.idField]: props.items.map((item) => item.id),
             }),
         });
+
+        if (res.status === 419) {
+            errorMessage.value = 'Sesi login sudah tidak valid. Silakan refresh halaman lalu coba lagi.';
+            return;
+        }
 
         const data = await res.json();
 
@@ -130,6 +157,7 @@ async function handleSubmit() {
         }
 
         result.value = data.ahp_result ?? null;
+        emit('saved', result.value);
     } catch (error) {
         console.error('Error saat submit:', error);
         errorMessage.value = 'Terjadi kesalahan jaringan. Coba lagi.';
@@ -160,12 +188,14 @@ async function handleSubmit() {
                     <span>{{ pair.itemB.name }}</span>
                 </div>
 
-                <div class="flex items-center justify-between gap-1">
+                <div class="flex items-center justify-between gap-1" role="group" :aria-label="`Perbandingan ${pair.itemA.name} vs ${pair.itemB.name}`">
                     <button
                         v-for="option in scaleButtons"
                         :key="option.value"
                         type="button"
                         :title="describeButton(pair, option)"
+                        :aria-label="describeButton(pair, option)"
+                        :aria-pressed="rawInput[pair.i][pair.j] === option.value"
                         @click="selectValue(pair.i, pair.j, option.value)"
                         class="flex-1 h-14 rounded-md text-xs font-medium border transition flex flex-col items-center justify-center gap-0.5"
                         :class="rawInput[pair.i][pair.j] === option.value
@@ -177,13 +207,13 @@ async function handleSubmit() {
                     </button>
                 </div>
 
-                <p class="mt-3 text-xs text-gray-500 text-center min-h-[16px]">
+                <p class="mt-3 text-xs text-gray-500 text-center min-h-[16px]" aria-live="polite">
                     {{ describeChoice(pair, rawInput[pair.i][pair.j]) || 'Belum dipilih' }}
                 </p>
             </div>
         </div>
 
-        <div v-if="errorMessage" class="mt-6 p-3 rounded-md bg-red-50 text-red-700 text-sm">
+        <div v-if="errorMessage" class="mt-6 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
             {{ errorMessage }}
         </div>
 

@@ -7,17 +7,16 @@ use App\Models\Criteria;
 use App\Models\CriteriaWeight;
 use App\Models\SubCriteria;
 use App\Services\AhpService;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class AhpController extends Controller
 {
     public function __construct(protected AhpService $ahpService) {}
 
-    /**
-     * Tampilkan form input matriks perbandingan untuk KRITERIA UTAMA
-     * (Minat, Bakat, Kepribadian).
-     */
     public function criteriaIndex()
     {
         $criteria = Criteria::orderBy('id')->get(['id', 'code', 'name']);
@@ -27,53 +26,43 @@ class AhpController extends Controller
         ]);
     }
 
-    /**
-     * Hitung & simpan bobot AHP untuk kriteria utama.
-     */
-    public function criteriaStore(Request $request)
+    public function criteriaStore(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'matrix'         => ['required', 'array'],
             'matrix.*'       => ['required', 'array'],
             'criteria_ids'   => ['required', 'array', 'min:2'],
-            'criteria_ids.*' => ['required', 'exists:criteria,id'],
+            'criteria_ids.*' => ['required', 'integer', 'exists:criteria,id'],
         ]);
 
-        $criteriaModels = Criteria::whereIn('id', $validated['criteria_ids'])
-            ->orderByRaw('FIELD(id, '.implode(',', $validated['criteria_ids']).')')
+        $ids = array_map('intval', $validated['criteria_ids']);
+
+        $criteriaModels = Criteria::whereIn('id', $ids)
+            ->orderByRaw('FIELD(id, '.implode(',', $ids).')')
             ->get();
 
-        $labels = $criteriaModels->pluck('code')->toArray();
-        $result = $this->ahpService->calculate($validated['matrix'], $labels);
+        return $this->processAhpMatrix(
+            $validated['matrix'],
+            $criteriaModels,
+            successMessage: 'Bobot kriteria utama berhasil disimpan.',
+            onSuccess: function (array $result) use ($criteriaModels, $request) {
 
-        // Tolak simpan kalau tidak konsisten (CR > 0.1)
-        if (! $result['is_consistent']) {
-            return response()->json([
-                'message'     => 'Matriks tidak konsisten (CR = '.$result['cr'].', harus ≤ 0.1). Silakan revisi penilaian perbandingan.',
-                'errors'      => ['matrix' => ['Matriks tidak konsisten (CR = '.$result['cr'].', harus ≤ 0.1).']],
-                'ahp_preview' => $result,
-            ], 422);
-        }
+                CriteriaWeight::whereIn('criteria_id', $criteriaModels->pluck('id'))
+                    ->update(['is_active' => false]);
 
-        foreach ($criteriaModels as $criteria) {
-            CriteriaWeight::create([
-                'criteria_id' => $criteria->id,
-                'weight'      => $result['weights'][$criteria->code],
-                'cr_value'    => $result['cr'],
-                'set_by'      => $request->user()->id,
-            ]);
-        }
-
-        return response()->json([
-            'message'    => 'Bobot kriteria utama berhasil disimpan.',
-            'ahp_result' => $result,
-        ]);
+                foreach ($criteriaModels as $criteria) {
+                    CriteriaWeight::create([
+                        'criteria_id' => $criteria->id,
+                        'weight'      => $result['weights'][$criteria->code],
+                        'cr_value'    => $result['cr'],
+                        'set_by'      => $request->user()->id,
+                        'is_active'   => true,
+                    ]);
+                }
+            }
+        );
     }
 
-    /**
-     * Tampilkan form input matriks perbandingan untuk SUB-KRITERIA
-     * di dalam satu kriteria utama tertentu.
-     */
     public function subCriteriaIndex(Criteria $criteria)
     {
         $subCriteria = $criteria->subCriteria()->orderBy('id')->get(['id', 'code', 'name', 'criteria_id']);
@@ -84,42 +73,71 @@ class AhpController extends Controller
         ]);
     }
 
-    /**
-     * Hitung & simpan bobot AHP untuk sub-kriteria.
-     * Catatan: bobot lokal sub-kriteria disimpan di kolom terpisah,
-     * bukan di tabel criteria_weights (yang khusus kriteria utama).
-     * Tambahkan kolom `local_weight` di tabel sub_criteria jika belum ada.
-     */
-    public function subCriteriaStore(Request $request, Criteria $criteria)
+    public function subCriteriaStore(Request $request, Criteria $criteria): JsonResponse
     {
         $validated = $request->validate([
-            'matrix'            => ['required', 'array'],
-            'matrix.*'          => ['required', 'array'],
+            'matrix'             => ['required', 'array'],
+            'matrix.*'           => ['required', 'array'],
             'sub_criteria_ids'   => ['required', 'array', 'min:2'],
-            'sub_criteria_ids.*' => ['required', 'exists:sub_criteria,id'],
+            'sub_criteria_ids.*' => ['required', 'integer', 'exists:sub_criteria,id'],
         ]);
 
-        $subCriteriaModels = SubCriteria::whereIn('id', $validated['sub_criteria_ids'])
-            ->orderByRaw('FIELD(id, '.implode(',', $validated['sub_criteria_ids']).')')
+        $ids = array_map('intval', $validated['sub_criteria_ids']);
+
+        $subCriteriaModels = SubCriteria::whereIn('id', $ids)
+            ->where('criteria_id', $criteria->id)
+            ->orderByRaw('FIELD(id, '.implode(',', $ids).')')
             ->get();
 
-        $labels = $subCriteriaModels->pluck('code')->toArray();
-        $result = $this->ahpService->calculate($validated['matrix'], $labels);
+        if ($subCriteriaModels->count() !== count($ids)) {
+            return response()->json([
+                'message' => 'Salah satu sub-kriteria tidak ditemukan atau bukan milik kriteria ini.',
+                'errors'  => ['sub_criteria_ids' => ['ID sub-kriteria tidak valid untuk kriteria ini.']],
+            ], 422);
+        }
+
+        return $this->processAhpMatrix(
+            $validated['matrix'],
+            $subCriteriaModels,
+            successMessage: 'Bobot sub-kriteria berhasil disimpan.',
+            onSuccess: function (array $result) use ($subCriteriaModels) {
+                foreach ($subCriteriaModels as $sub) {
+                    $sub->update(['local_weight' => $result['weights'][$sub->code]]);
+                }
+            }
+        );
+    }
+
+    private function processAhpMatrix(
+        array $matrix,
+        Collection $models,
+        string $successMessage,
+        callable $onSuccess
+    ): JsonResponse {
+        $labels = $models->pluck('code')->toArray();
+
+        $expectedSize = count($labels);
+        if (count($matrix) !== $expectedSize || collect($matrix)->contains(fn ($row) => count($row) !== $expectedSize)) {
+            return response()->json([
+                'message' => "Ukuran matriks harus {$expectedSize}x{$expectedSize} sesuai jumlah item yang dipilih.",
+                'errors'  => ['matrix' => ['Ukuran matriks tidak sesuai jumlah item.']],
+            ], 422);
+        }
+
+        $result = $this->ahpService->calculate($matrix, $labels);
 
         if (! $result['is_consistent']) {
             return response()->json([
-                'message'     => 'Matriks tidak konsisten (CR = '.$result['cr'].', harus ≤ 0.1). Silakan revisi penilaian perbandingan.',
-                'errors'      => ['matrix' => ['Matriks tidak konsisten (CR = '.$result['cr'].', harus ≤ 0.1).']],
+                'message'     => "Matriks tidak konsisten (CR = {$result['cr']}, harus ≤ 0.1). Silakan revisi penilaian perbandingan.",
+                'errors'      => ['matrix' => ["Matriks tidak konsisten (CR = {$result['cr']}, harus ≤ 0.1)."]],
                 'ahp_preview' => $result,
             ], 422);
         }
 
-        foreach ($subCriteriaModels as $sub) {
-            $sub->update(['local_weight' => $result['weights'][$sub->code]]);
-        }
+        DB::transaction(fn () => $onSuccess($result));
 
         return response()->json([
-            'message'    => 'Bobot sub-kriteria berhasil disimpan.',
+            'message'    => $successMessage,
             'ahp_result' => $result,
         ]);
     }

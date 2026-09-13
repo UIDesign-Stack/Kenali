@@ -8,7 +8,6 @@ const props = defineProps({
     questions: { type: Array, required: true },
 });
 
-// Form tambah soal baru
 const newQuestionForm = useForm({
     question_text: '',
 });
@@ -20,40 +19,65 @@ function submitNewQuestion() {
     });
 }
 
-// State untuk edit inline
 const editingId = ref(null);
 const editText = ref('');
+const editError = ref('');
+const editSaving = ref(false);
 
 function startEdit(question) {
     editingId.value = question.id;
     editText.value = question.question_text;
+    editError.value = '';
 }
 
 function cancelEdit() {
     editingId.value = null;
     editText.value = '';
+    editError.value = '';
 }
 
 function saveEdit(question) {
+    if (!editText.value.trim()) {
+        editError.value = 'Teks soal tidak boleh kosong.';
+        return;
+    }
+
+    editSaving.value = true;
+    editError.value = '';
+
     router.patch(route('admin.questions.update', question.id), {
-        question_text: editText.value,
+        question_text: editText.value.trim(),
     }, {
         preserveScroll: true,
         onSuccess: () => cancelEdit(),
+        onError: (errors) => {
+            editError.value = errors.question_text || 'Gagal menyimpan perubahan.';
+        },
+        onFinish: () => (editSaving.value = false),
     });
 }
 
+const togglingId = ref(null);
+const destroyingId = ref(null);
+
 function toggleActive(question) {
+    if (togglingId.value) return;
+
+    togglingId.value = question.id;
     router.patch(route('admin.questions.toggle-active', question.id), {}, {
         preserveScroll: true,
+        onFinish: () => (togglingId.value = null),
     });
 }
 
 function destroyQuestion(question) {
-    if (! confirm('Yakin ingin menghapus soal ini?')) return;
+    if (destroyingId.value) return;
+    if (!confirm('Yakin ingin menghapus soal ini?')) return;
 
+    destroyingId.value = question.id;
     router.delete(route('admin.questions.destroy', question.id), {
         preserveScroll: true,
+        onFinish: () => (destroyingId.value = null),
     });
 }
 </script>
@@ -74,10 +98,11 @@ function destroyQuestion(question) {
         <div class="max-w-3xl mx-auto p-6">
             <!-- Form tambah soal -->
             <form @submit.prevent="submitNewQuestion" class="mb-8 p-4 border border-gray-200 rounded-lg">
-                <label class="block text-sm font-medium text-gray-700 mb-2">
+                <label for="new-question" class="block text-sm font-medium text-gray-700 mb-2">
                     Tambah soal baru
                 </label>
                 <textarea
+                    id="new-question"
                     v-model="newQuestionForm.question_text"
                     rows="2"
                     placeholder="Contoh: Saya senang menganalisis data untuk menemukan pola tertentu."
@@ -91,7 +116,7 @@ function destroyQuestion(question) {
                     :disabled="newQuestionForm.processing || !newQuestionForm.question_text.trim()"
                     class="mt-3 px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                 >
-                    Tambah Soal
+                    {{ newQuestionForm.processing ? 'Menyimpan…' : 'Tambah Soal' }}
                 </button>
             </form>
 
@@ -109,16 +134,21 @@ function destroyQuestion(question) {
                             rows="2"
                             class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                         ></textarea>
+                        <p v-if="editError" class="text-xs text-red-600 mt-1">
+                            {{ editError }}
+                        </p>
                         <div class="flex gap-2 mt-2">
                             <button
                                 @click="saveEdit(question)"
-                                class="px-3 py-1.5 rounded-md bg-teal-600 text-white text-xs font-medium hover:bg-teal-700"
+                                :disabled="editSaving"
+                                class="px-3 py-1.5 rounded-md bg-teal-600 text-white text-xs font-medium disabled:opacity-40 hover:bg-teal-700"
                             >
-                                Simpan
+                                {{ editSaving ? 'Menyimpan…' : 'Simpan' }}
                             </button>
                             <button
                                 @click="cancelEdit"
-                                class="px-3 py-1.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200"
+                                :disabled="editSaving"
+                                class="px-3 py-1.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium disabled:opacity-40 hover:bg-gray-200"
                             >
                                 Batal
                             </button>
@@ -146,15 +176,17 @@ function destroyQuestion(question) {
                             </button>
                             <button
                                 @click="toggleActive(question)"
-                                class="text-xs text-gray-500 hover:text-amber-600"
+                                :disabled="togglingId === question.id"
+                                class="text-xs text-gray-500 hover:text-amber-600 disabled:opacity-40"
                             >
-                                {{ question.is_active ? 'Nonaktifkan' : 'Aktifkan' }}
+                                {{ togglingId === question.id ? '...' : (question.is_active ? 'Nonaktifkan' : 'Aktifkan') }}
                             </button>
                             <button
                                 @click="destroyQuestion(question)"
-                                class="text-xs text-gray-500 hover:text-red-600"
+                                :disabled="destroyingId === question.id"
+                                class="text-xs text-gray-500 hover:text-red-600 disabled:opacity-40"
                             >
-                                Hapus
+                                {{ destroyingId === question.id ? 'Menghapus…' : 'Hapus' }}
                             </button>
                         </div>
                     </div>

@@ -3,25 +3,21 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\AlternativeProfileRequest;
 use App\Models\Alternative;
 use App\Models\AlternativeProfile;
 use App\Models\Criteria;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class AlternativeProfileController extends Controller
 {
-    /**
-     * Tampilkan form input skor ideal untuk semua sub-kriteria,
-     * dikelompokkan per kriteria utama.
-     */
     public function edit(Alternative $alternative)
     {
         $criteria = Criteria::with(['subCriteria' => fn ($q) => $q->orderBy('order')])
             ->orderBy('order')
             ->get();
 
-        // Ambil skor yang sudah pernah diisi sebelumnya (kalau ada), key: sub_criteria_id
         $existingScores = $alternative->profiles()
             ->pluck('ideal_score', 'sub_criteria_id');
 
@@ -32,28 +28,27 @@ class AlternativeProfileController extends Controller
         ]);
     }
 
-    /**
-     * Simpan/update semua skor ideal sekaligus.
-     */
-    public function update(Request $request, Alternative $alternative)
+    public function update(AlternativeProfileRequest $request, Alternative $alternative)
     {
-        $validated = $request->validate([
-            'scores'                  => ['required', 'array'],
-            'scores.*.sub_criteria_id' => ['required', 'exists:sub_criteria,id'],
-            'scores.*.ideal_score'     => ['required', 'numeric', 'min:1', 'max:5'],
-        ]);
+        $now = now();
 
-        foreach ($validated['scores'] as $score) {
-            AlternativeProfile::updateOrCreate(
-                [
-                    'alternative_id'  => $alternative->id,
-                    'sub_criteria_id' => $score['sub_criteria_id'],
-                ],
-                [
-                    'ideal_score' => $score['ideal_score'],
-                ]
+        $rows = collect($request->validated('scores'))
+            ->map(fn (array $score) => [
+                'alternative_id'  => $alternative->id,
+                'sub_criteria_id' => $score['sub_criteria_id'],
+                'ideal_score'     => $score['ideal_score'],
+                'created_at'      => $now,
+                'updated_at'      => $now,
+            ])
+            ->all();
+
+        DB::transaction(function () use ($alternative, $rows) {
+            AlternativeProfile::upsert(
+                $rows,
+                uniqueBy: ['alternative_id', 'sub_criteria_id'],
+                update: ['ideal_score', 'updated_at']
             );
-        }
+        });
 
         return redirect()
             ->route('admin.alternatives.index')
