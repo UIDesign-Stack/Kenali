@@ -14,6 +14,11 @@ const newMessage = ref('');
 const sending = ref(false);
 const sendError = ref(null);
 const messagesContainer = ref(null);
+const otherPartyTyping = ref(false);
+
+let echoChannel = null;
+let typingHideTimeout = null;
+let lastWhisperAt = 0;
 
 const statusLabel = {
     pending: 'Menunggu respon psikolog',
@@ -46,6 +51,23 @@ function pushIfNew(message) {
         messages.value.push(message);
         scrollToBottom();
     }
+    // Pesan sungguhan masuk -- indikator "sedang menulis" jadi tidak relevan lagi.
+    otherPartyTyping.value = false;
+    clearTimeout(typingHideTimeout);
+}
+
+// Dipanggil tiap kali user mengetik di kotak pesan. Di-throttle supaya
+// tidak mengirim whisper di setiap keystroke (client events punya rate
+// limit di sisi server) -- cukup kirim maksimal sekali tiap 2 detik
+// selama user aktif mengetik.
+function handleTyping() {
+    if (!echoChannel || props.consultation.status !== 'scheduled') return;
+
+    const now = Date.now();
+    if (now - lastWhisperAt < 2000) return;
+    lastWhisperAt = now;
+
+    echoChannel.whisper('typing', {});
 }
 
 async function sendMessage() {
@@ -93,12 +115,25 @@ onMounted(() => {
 
     if (props.consultation.status !== 'scheduled') return;
 
-    window.Echo.private(channelName).listen('.message.sent', (e) => {
-        pushIfNew(e);
-    });
+    echoChannel = window.Echo.private(channelName);
+
+    echoChannel
+        .listen('.message.sent', (e) => {
+            pushIfNew(e);
+        })
+        .listenForWhisper('typing', () => {
+            otherPartyTyping.value = true;
+            clearTimeout(typingHideTimeout);
+            // Sembunyikan lagi kalau tidak ada whisper baru dalam 3 detik
+            // (nandain lawan bicara berhenti mengetik / diam).
+            typingHideTimeout = setTimeout(() => {
+                otherPartyTyping.value = false;
+            }, 3000);
+        });
 });
 
 onBeforeUnmount(() => {
+    clearTimeout(typingHideTimeout);
     window.Echo.leave(channelName);
 });
 </script>
@@ -165,11 +200,16 @@ onBeforeUnmount(() => {
 
                 <p v-if="sendError" class="text-xs text-red-600 mb-2" role="alert">{{ sendError }}</p>
 
+                <p v-if="otherPartyTyping" class="text-xs text-gray-400 italic mb-2">
+                    {{ consultation.psychologist_profile.user.name }} sedang menulis…
+                </p>
+
                 <!-- Samakan persis dengan backend (sendMessage() cuma izinkan
                      status 'scheduled'), bukan sekadar "bukan completed/cancelled". -->
                 <div v-if="consultation.status === 'scheduled'" class="flex gap-2">
                     <input
                         v-model="newMessage"
+                        @input="handleTyping"
                         @keyup.enter="sendMessage"
                         type="text"
                         placeholder="Tulis pesan…"

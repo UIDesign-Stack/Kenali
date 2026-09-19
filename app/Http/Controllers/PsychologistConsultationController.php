@@ -72,7 +72,6 @@ class PsychologistConsultationController extends Controller
 
     public function sendMessage(SendPsychologistMessageRequest $request, Consultation $consultation)
     {
-
         abort_if(
             $consultation->status !== ConsultationStatus::Scheduled->value,
             422,
@@ -85,9 +84,11 @@ class PsychologistConsultationController extends Controller
             'sent_at'   => now(),
         ]);
 
-        broadcast(new ConsultationMessageSent($message->load('sender:id,name')))->toOthers();
+        $message->load('sender:id,name');
 
-        return back();
+        broadcast(new ConsultationMessageSent($message))->toOthers();
+
+        return response()->json(['data' => $message]);
     }
 
     private function authorizeOwnership(Consultation $consultation, Request $request): void
