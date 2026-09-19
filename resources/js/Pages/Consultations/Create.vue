@@ -1,10 +1,12 @@
 <script setup>
-import { useForm } from '@inertiajs/vue3';
+import { useForm, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     psychologists: { type: Array, required: true },
     completedSessions: { type: Array, required: true },
+    // Dikirim dari ConsultationController::create().
+    lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
 const form = useForm({
@@ -14,8 +16,15 @@ const form = useForm({
     notes: '',
 });
 
+// Backend mengirim result.topDetail (rank teratas), BUKAN result.details[0].
+// Relasi `details` sengaja di-unset di ConsultationController::create()
+// setelah topDetail dihitung, jadi jangan akses session.result.details lagi.
 function topAlternativeName(session) {
-    return session.result?.details?.[0]?.alternative?.name ?? null;
+    return session.result?.topDetail?.alternative?.name ?? null;
+}
+
+function lifePhaseLabel(session) {
+    return props.lifePhaseOptions[session.life_phase] ?? session.life_phase;
 }
 
 function submit() {
@@ -24,6 +33,8 @@ function submit() {
 </script>
 
 <template>
+    <Head title="Ajukan Konsultasi" />
+
     <AuthenticatedLayout>
         <template #header>
             <h1 class="text-xl font-semibold text-gray-800">Ajukan Konsultasi</h1>
@@ -83,7 +94,7 @@ function submit() {
                     >
                         <option value="">Tidak dikaitkan</option>
                         <option v-for="session in completedSessions" :key="session.id" :value="session.id">
-                            {{ session.life_phase }} — {{ topAlternativeName(session) ?? 'hasil belum ada' }}
+                            {{ lifePhaseLabel(session) }} — {{ topAlternativeName(session) ?? 'hasil belum ada' }}
                         </option>
                     </select>
                     <p v-if="form.errors.test_session_id" class="text-xs text-red-600 mt-1">
@@ -99,7 +110,7 @@ function submit() {
                         class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     >
                         <option value="chat">Chat</option>
-                        <option value="video_call">Video Call</option>
+                        <option value="tatap_muka">Tatap Muka Langsung</option>
                     </select>
                     <p v-if="form.errors.type" class="text-xs text-red-600 mt-1">{{ form.errors.type }}</p>
                 </div>

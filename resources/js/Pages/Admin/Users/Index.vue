@@ -1,6 +1,6 @@
 <script setup>
-import { ref, watch } from 'vue';
-import { router, Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { router, Link, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -8,41 +8,31 @@ const props = defineProps({
     filters: { type: Object, required: true },
 });
 
+const page = usePage();
+
 const search = ref(props.filters.search ?? '');
-let searchTimeout = null;
+
+// Lacak user mana yang sedang diproses, supaya tombolnya di-disable dan
+// mencegah double-click mengirim request dobel.
+const processingId = ref(null);
 
 function applySearch() {
-    clearTimeout(searchTimeout);
-    router.get(route('admin.users.index'), { search: search.value || undefined }, {
+    router.get(route('admin.users.index'), { search: search.value }, {
         preserveState: true,
         replace: true,
     });
 }
 
-watch(search, () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(applySearch, 400);
-});
-
-function clearSearch() {
-    search.value = '';
-    applySearch();
-}
-
-watch(() => props.filters.search, (value) => {
-    search.value = value ?? '';
-});
-
-const togglingId = ref(null);
-
 function toggleActive(user) {
-    if (togglingId.value) return;
     if (!confirm(`Yakin ingin ${user.is_active ? 'menonaktifkan' : 'mengaktifkan'} akun ${user.name}?`)) return;
 
-    togglingId.value = user.id;
+    processingId.value = user.id;
+
     router.patch(route('admin.users.toggle-active', user.id), {}, {
         preserveScroll: true,
-        onFinish: () => (togglingId.value = null),
+        onFinish: () => {
+            processingId.value = null;
+        },
     });
 }
 
@@ -52,33 +42,37 @@ function roleLabel(user) {
 </script>
 
 <template>
+    <Head title="Manajemen User" />
+
     <AuthenticatedLayout>
         <template #header>
-            <h1 class="text-xl font-semibold text-gray-800">Manajemen User</h1>
+            <div class="flex items-center justify-between">
+                <h1 class="text-xl font-semibold text-gray-800">Manajemen User</h1>
+                <Link
+                    :href="route('admin.users.create-staff')"
+                    class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium hover:bg-teal-700"
+                >
+                    + Buat Akun Staff
+                </Link>
+            </div>
         </template>
 
         <div class="max-w-4xl mx-auto p-6">
-            <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
-                {{ $page.props.flash.success }}
+            <div v-if="page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ page.props.flash.success }}
             </div>
 
-            <div class="relative mb-4">
-                <input
-                    v-model="search"
-                    @keyup.enter="applySearch"
-                    type="text"
-                    placeholder="Cari nama atau email…"
-                    class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500 pr-16"
-                />
-                <button
-                    v-if="search"
-                    @click="clearSearch"
-                    type="button"
-                    class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
-                >
-                    Hapus
-                </button>
+            <div v-if="page.props.errors?.user" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm">
+                {{ page.props.errors.user }}
             </div>
+
+            <input
+                v-model="search"
+                @keyup.enter="applySearch"
+                type="text"
+                placeholder="Cari nama atau email…"
+                class="w-full mb-4 rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
+            />
 
             <div class="space-y-2">
                 <div
@@ -100,11 +94,11 @@ function roleLabel(user) {
 
                     <button
                         @click="toggleActive(user)"
-                        :disabled="togglingId === user.id"
-                        class="text-xs shrink-0 ml-4 disabled:opacity-40"
+                        :disabled="processingId === user.id"
+                        class="text-xs shrink-0 ml-4 disabled:opacity-50 disabled:cursor-not-allowed"
                         :class="user.is_active ? 'text-red-500 hover:text-red-700' : 'text-teal-600 hover:text-teal-800'"
                     >
-                        {{ togglingId === user.id ? '...' : (user.is_active ? 'Nonaktifkan' : 'Aktifkan') }}
+                        {{ processingId === user.id ? '...' : (user.is_active ? 'Nonaktifkan' : 'Aktifkan') }}
                     </button>
                 </div>
 

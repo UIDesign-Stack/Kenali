@@ -1,12 +1,14 @@
 <script setup>
 import { ref } from 'vue';
-import { router, Link, useForm } from '@inertiajs/vue3';
+import { router, Link, useForm, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     subCriteria: { type: Object, required: true },
     questions: { type: Array, required: true },
 });
+
+const page = usePage();
 
 const newQuestionForm = useForm({
     question_text: '',
@@ -59,6 +61,7 @@ function saveEdit(question) {
 
 const togglingId = ref(null);
 const destroyingId = ref(null);
+const destroyError = ref('');
 
 function toggleActive(question) {
     if (togglingId.value) return;
@@ -75,14 +78,21 @@ function destroyQuestion(question) {
     if (!confirm('Yakin ingin menghapus soal ini?')) return;
 
     destroyingId.value = question.id;
+    destroyError.value = '';
+
     router.delete(route('admin.questions.destroy', question.id), {
         preserveScroll: true,
+        onError: (errors) => {
+            destroyError.value = errors.question || 'Gagal menghapus soal.';
+        },
         onFinish: () => (destroyingId.value = null),
     });
 }
 </script>
 
 <template>
+    <Head :title="`Soal — ${subCriteria.name}`" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-3">
@@ -96,6 +106,14 @@ function destroyQuestion(question) {
         </template>
 
         <div class="max-w-3xl mx-auto p-6">
+            <div v-if="page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ page.props.flash.success }}
+            </div>
+
+            <div v-if="destroyError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
+                {{ destroyError }}
+            </div>
+
             <!-- Form tambah soal -->
             <form @submit.prevent="submitNewQuestion" class="mb-8 p-4 border border-gray-200 rounded-lg">
                 <label for="new-question" class="block text-sm font-medium text-gray-700 mb-2">
@@ -105,6 +123,7 @@ function destroyQuestion(question) {
                     id="new-question"
                     v-model="newQuestionForm.question_text"
                     rows="2"
+                    maxlength="1000"
                     placeholder="Contoh: Saya senang menganalisis data untuk menemukan pola tertentu."
                     class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                 ></textarea>
@@ -132,6 +151,7 @@ function destroyQuestion(question) {
                         <textarea
                             v-model="editText"
                             rows="2"
+                            maxlength="1000"
                             class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                         ></textarea>
                         <p v-if="editError" class="text-xs text-red-600 mt-1">

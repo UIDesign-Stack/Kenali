@@ -1,13 +1,15 @@
 <script setup>
-import { ref, nextTick, onMounted, watch } from 'vue';
-import { router, Link, usePage } from '@inertiajs/vue3';
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { Link, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+
+const page = usePage();
 
 const props = defineProps({
     consultation: { type: Object, required: true },
 });
 
-const page = usePage();
+const messages = ref([...props.consultation.messages]);
 const newMessage = ref('');
 const sending = ref(false);
 const sendError = ref(null);
@@ -20,6 +22,15 @@ const statusLabel = {
     cancelled: 'Dibatalkan',
 };
 
+const typeLabel = {
+    chat: 'Chat',
+    tatap_muka: 'Tatap Muka Langsung',
+};
+
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+}
+
 function scrollToBottom() {
     nextTick(() => {
         if (messagesContainer.value) {
@@ -28,30 +39,73 @@ function scrollToBottom() {
     });
 }
 
-onMounted(scrollToBottom);
-watch(() => props.consultation.messages?.length, scrollToBottom);
+function pushIfNew(message) {
+    // Dedupe: kalau pesan ini sudah ada (misal dari respons kirim sendiri),
+    // jangan dobel-tambahkan saat broadcast realtime juga datang.
+    if (!messages.value.some((m) => m.id === message.id)) {
+        messages.value.push(message);
+        scrollToBottom();
+    }
+}
 
-function sendMessage() {
-    if (sending.value || !newMessage.value.trim()) return;
+async function sendMessage() {
+    if (!newMessage.value.trim()) return;
 
     sending.value = true;
     sendError.value = null;
 
-    router.post(route('consultations.messages.send', props.consultation.id), {
-        message: newMessage.value,
-    }, {
-        preserveScroll: true,
-        only: ['consultation'],
-        onSuccess: () => (newMessage.value = ''),
-        onError: (errors) => {
-            sendError.value = errors.message ?? 'Pesan gagal terkirim. Coba lagi.';
-        },
-        onFinish: () => (sending.value = false),
-    });
+    try {
+        const res = await fetch(route('consultations.messages.send', props.consultation.id), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ message: newMessage.value }),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            pushIfNew(data.data);
+            newMessage.value = '';
+            return;
+        }
+
+        // res tidak ok -- tampilkan pesan errornya, jangan diam saja.
+        const errorData = await res.json().catch(() => null);
+        sendError.value = errorData?.message
+            ?? errorData?.errors?.message?.[0]
+            ?? 'Pesan gagal terkirim. Coba lagi.';
+    } catch (e) {
+        console.error('Gagal kirim pesan:', e);
+        sendError.value = 'Terjadi kesalahan jaringan. Coba lagi.';
+    } finally {
+        sending.value = false;
+    }
 }
+
+const channelName = `consultation.${props.consultation.id}`;
+
+onMounted(() => {
+    scrollToBottom();
+
+    if (props.consultation.status !== 'scheduled') return;
+
+    window.Echo.private(channelName).listen('.message.sent', (e) => {
+        pushIfNew(e);
+    });
+});
+
+onBeforeUnmount(() => {
+    window.Echo.leave(channelName);
+});
 </script>
 
 <template>
+    <Head :title="consultation.psychologist_profile.user.name" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-3">
@@ -59,54 +113,74 @@ function sendMessage() {
                     ← Konsultasi
                 </Link>
                 <h1 class="text-xl font-semibold text-gray-800">
-                    {{ consultation.psychologist_profile?.user?.name ?? 'Psikolog' }}
+                    {{ consultation.psychologist_profile.user.name }}
                 </h1>
             </div>
         </template>
 
         <div class="max-w-xl mx-auto p-6">
             <div class="mb-4 p-3 rounded-md bg-gray-50 text-sm text-gray-600 text-center">
-                {{ statusLabel[consultation.status] ?? consultation.status }}
+                {{ statusLabel[consultation.status] ?? consultation.status }} · {{ typeLabel[consultation.type] ?? consultation.type }}
+            </div>
+
+            <div
+                v-if="consultation.type === 'tatap_muka' && consultation.status === 'scheduled'"
+                class="mb-4 p-3 rounded-md bg-teal-50 text-sm text-teal-700"
+            >
+                📍 Pertemuan tatap muka langsung. Detail lokasi & waktu bisa dilihat di
+                catatan psikolog atau tanyakan lewat chat.
+            </div>
+
+            <div v-if="consultation.notes" class="mb-4 p-3 rounded-md bg-gray-50 text-sm text-gray-600">
+                "{{ consultation.notes }}"
             </div>
 
             <div v-if="consultation.status === 'pending'" class="p-6 border border-amber-200 bg-amber-50 rounded-lg text-center text-sm text-amber-700">
                 Menunggu psikolog menerima permintaan konsultasimu.
             </div>
 
+            <div v-else-if="consultation.status === 'cancelled'" class="p-6 border border-gray-200 bg-gray-50 rounded-lg text-center">
+                <p class="text-sm text-gray-600 mb-2">Konsultasi ini dibatalkan.</p>
+                <p v-if="consultation.cancelled_reason" class="text-sm text-gray-500 italic">
+                    "{{ consultation.cancelled_reason }}"
+                </p>
+            </div>
+
             <template v-else>
-                <div ref="messagesContainer" class="space-y-3 mb-4 max-h-96 overflow-y-auto scroll-smooth">
+                <div ref="messagesContainer" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
                     <div
-                        v-for="msg in consultation.messages"
+                        v-for="msg in messages"
                         :key="msg.id"
                         class="max-w-[80%] p-3 rounded-lg text-sm"
-                        :class="msg.sender?.id === page.props.auth.user.id
+                        :class="msg.sender.id === page.props.auth.user.id
                             ? 'ml-auto bg-teal-600 text-white'
                             : 'bg-gray-100 text-gray-700'"
                     >
                         {{ msg.message }}
                     </div>
-                    <p v-if="consultation.messages.length === 0" class="text-xs text-gray-400 text-center py-6">
+                    <p v-if="messages.length === 0" class="text-xs text-gray-400 text-center py-6">
                         Belum ada pesan. Mulai percakapan di bawah.
                     </p>
                 </div>
 
-                <p v-if="sendError" class="text-xs text-red-600 mb-2">{{ sendError }}</p>
+                <p v-if="sendError" class="text-xs text-red-600 mb-2" role="alert">{{ sendError }}</p>
 
-                <div v-if="consultation.status !== 'completed' && consultation.status !== 'cancelled'" class="flex gap-2">
+                <!-- Samakan persis dengan backend (sendMessage() cuma izinkan
+                     status 'scheduled'), bukan sekadar "bukan completed/cancelled". -->
+                <div v-if="consultation.status === 'scheduled'" class="flex gap-2">
                     <input
                         v-model="newMessage"
                         @keyup.enter="sendMessage"
                         type="text"
                         placeholder="Tulis pesan…"
-                        :disabled="sending"
-                        class="flex-1 rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500 disabled:opacity-60"
+                        class="flex-1 rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     />
                     <button
                         @click="sendMessage"
                         :disabled="sending || !newMessage.trim()"
                         class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                     >
-                        {{ sending ? '...' : 'Kirim' }}
+                        {{ sending ? 'Mengirim…' : 'Kirim' }}
                     </button>
                 </div>
             </template>

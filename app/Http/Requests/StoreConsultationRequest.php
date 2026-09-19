@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\TestSessionStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreConsultationRequest extends FormRequest
 {
@@ -25,7 +27,7 @@ class StoreConsultationRequest extends FormRequest
                 'nullable',
                 Rule::exists('test_sessions', 'id')->where('user_id', $this->user()->id),
             ],
-            'type'  => ['required', 'in:chat,video_call'],
+            'type'  => ['required', 'in:chat,tatap_muka'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }
@@ -36,5 +38,27 @@ class StoreConsultationRequest extends FormRequest
             'psychologist_profile_id.exists' => 'Psikolog yang dipilih tidak tersedia atau belum terverifikasi.',
             'test_session_id.exists'         => 'Sesi tes tidak ditemukan atau bukan milikmu.',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            if (empty($this->test_session_id)) {
+                return;
+            }
+
+            $isCompleted = $this->user()
+                ->testSessions()
+                ->where('id', $this->test_session_id)
+                ->where('status', TestSessionStatus::Completed->value)
+                ->exists();
+
+            if (! $isCompleted) {
+                $validator->errors()->add(
+                    'test_session_id',
+                    'Sesi tes yang dipilih belum selesai dikerjakan.'
+                );
+            }
+        });
     }
 }

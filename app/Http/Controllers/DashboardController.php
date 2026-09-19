@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ConsultationStatus;
+use App\Enums\TestSessionStatus;
 use App\Models\Alternative;
 use App\Models\Consultation;
 use App\Models\PsychologistProfile;
@@ -17,9 +19,6 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        // Precedence role sengaja diurutkan: admin > psikolog > user.
-        // Kalau suatu saat ada user dengan lebih dari satu role (kasus tidak umum,
-        // tapi bisa terjadi), dashboard admin yang diprioritaskan ditampilkan.
         if ($user->hasRole('admin')) {
             return Inertia::render('Dashboard', [
                 'role' => 'admin',
@@ -48,12 +47,12 @@ class DashboardController extends Controller
             'total_psychologists'    => PsychologistProfile::count(),
             'verified_psychologists' => PsychologistProfile::where('is_verified', true)->count(),
             'total_test_sessions'       => TestSession::count(),
-            'completed_test_sessions'   => TestSession::where('status', 'completed')->count(),
-            'in_progress_test_sessions' => TestSession::where('status', 'in_progress')->count(),
+            'completed_test_sessions'   => TestSession::where('status', TestSessionStatus::Completed->value)->count(),
+            'in_progress_test_sessions' => TestSession::where('status', TestSessionStatus::InProgress->value)->count(),
             'total_consultations'     => Consultation::count(),
-            'pending_consultations'   => Consultation::where('status', 'pending')->count(),
-            'scheduled_consultations' => Consultation::where('status', 'scheduled')->count(),
-            'completed_consultations' => Consultation::where('status', 'completed')->count(),
+            'pending_consultations'   => Consultation::where('status', ConsultationStatus::Pending->value)->count(),
+            'scheduled_consultations' => Consultation::where('status', ConsultationStatus::Scheduled->value)->count(),
+            'completed_consultations' => Consultation::where('status', ConsultationStatus::Completed->value)->count(),
         ];
 
         $topAlternatives = TestResultDetail::where('rank', 1)
@@ -94,9 +93,9 @@ class DashboardController extends Controller
         return [
             'profile' => $profile,
             'stats' => [
-                'pending_consultations'   => $profile->consultations()->where('status', 'pending')->count(),
-                'scheduled_consultations' => $profile->consultations()->where('status', 'scheduled')->count(),
-                'completed_consultations' => $profile->consultations()->where('status', 'completed')->count(),
+                'pending_consultations'   => $profile->consultations()->where('status', ConsultationStatus::Pending->value)->count(),
+                'scheduled_consultations' => $profile->consultations()->where('status', ConsultationStatus::Scheduled->value)->count(),
+                'completed_consultations' => $profile->consultations()->where('status', ConsultationStatus::Completed->value)->count(),
             ],
             'recentConsultations' => $profile->consultations()
                 ->with('user:id,name')
@@ -108,6 +107,7 @@ class DashboardController extends Controller
 
     protected function userData(User $user): array
     {
+
         $latestSession = $user->testSessions()
             ->with(['result.details' => fn ($q) => $q->orderBy('rank')->limit(1)->with('alternative:id,name')])
             ->latest('started_at')
@@ -116,7 +116,7 @@ class DashboardController extends Controller
         return [
             'stats' => [
                 'total_tests'         => $user->testSessions()->count(),
-                'completed_tests'     => $user->testSessions()->where('status', 'completed')->count(),
+                'completed_tests'     => $user->testSessions()->where('status', TestSessionStatus::Completed->value)->count(),
                 'total_consultations' => $user->consultations()->count(),
             ],
             'latestSession' => $latestSession,

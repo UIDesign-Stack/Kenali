@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ConsultationStatus;
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,8 +16,6 @@ use Inertia\Response;
 
 class ProfileController extends Controller
 {
-    private const ACTIVE_CONSULTATION_STATUSES = ['pending', 'ongoing', 'in_progress'];
-
     public function edit(Request $request): Response
     {
         return Inertia::render('Profile/Edit', [
@@ -63,11 +63,10 @@ class ProfileController extends Controller
         return Redirect::to('/');
     }
 
-    private function hasActiveConsultation($user): bool
+    private function hasActiveConsultation(User $user): bool
     {
-
         $asClient = $user->consultations()
-            ->whereIn('status', self::ACTIVE_CONSULTATION_STATUSES)
+            ->whereIn('status', ConsultationStatus::activeStatusValues())
             ->exists();
 
         if ($asClient) {
@@ -76,7 +75,7 @@ class ProfileController extends Controller
 
         if ($user->psychologistProfile) {
             return $user->psychologistProfile->consultations()
-                ->whereIn('status', self::ACTIVE_CONSULTATION_STATUSES)
+                ->whereIn('status', ConsultationStatus::activeStatusValues())
                 ->exists();
         }
 

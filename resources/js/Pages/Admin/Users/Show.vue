@@ -1,14 +1,15 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
-defineProps({
+const props = defineProps({
     user: { type: Object, required: true },
     testSessions: { type: Array, required: true },
 });
 
+const page = usePage();
+
 const statusLabels = {
-    draft: 'Belum selesai',
     in_progress: 'Sedang berlangsung',
     completed: 'Selesai',
 };
@@ -18,7 +19,7 @@ function statusLabel(status) {
 }
 
 function topAlternativeName(session) {
-    return session.result?.details?.[0]?.alternative?.name ?? null;
+    return session.result?.topDetail?.alternative?.name ?? null;
 }
 
 function formatDate(dateStr) {
@@ -32,17 +33,31 @@ function formatDate(dateStr) {
 </script>
 
 <template>
+    <Head :title="user.name" />
+
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-3">
-                <Link :href="route('admin.users.index')" class="text-sm text-gray-400 hover:text-gray-600">
-                    ← User
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <Link :href="route('admin.users.index')" class="text-sm text-gray-400 hover:text-gray-600">
+                        ← User
+                    </Link>
+                    <h1 class="text-xl font-semibold text-gray-800">{{ user.name }}</h1>
+                </div>
+                <Link
+                    :href="route('admin.users.edit', user.id)"
+                    class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium hover:bg-teal-700"
+                >
+                    Edit
                 </Link>
-                <h1 class="text-xl font-semibold text-gray-800">{{ user.name }}</h1>
             </div>
         </template>
 
         <div class="max-w-2xl mx-auto p-6">
+            <div v-if="page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ page.props.flash.success }}
+            </div>
+
             <div class="p-4 border border-gray-200 rounded-lg mb-6">
                 <p class="text-sm text-gray-500">Email</p>
                 <p class="text-sm text-gray-800 mb-2">{{ user.email }}</p>

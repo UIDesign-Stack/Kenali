@@ -13,9 +13,12 @@ class Consultation extends Model
         'test_session_id',
         'user_id',
         'psychologist_profile_id',
+        'type',
         'status',
         'scheduled_at',
+        'duration_minutes',
         'notes',
+        'cancelled_reason',
     ];
 
     protected function casts(): array

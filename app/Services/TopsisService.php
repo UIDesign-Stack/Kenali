@@ -8,22 +8,7 @@ use App\Models\TestSession;
 
 class TopsisService
 {
-    /**
-     * Hitung ranking alternatif untuk satu sesi tes.
-     *
-     * Pendekatan: "profile matching" digabung TOPSIS.
-     * 1. Hitung skor rata-rata jawaban user per sub-kriteria (1-5).
-     * 2. Untuk tiap alternatif, hitung skor kecocokan per sub-kriteria:
-     *    match = 5 - |skor_user - skor_ideal_alternatif| (semakin dekat, semakin tinggi).
-     * 3. Bangun matriks keputusan (baris = alternatif, kolom = sub-kriteria) dari skor match ini.
-     * 4. Normalisasi matriks (vector normalization).
-     * 5. Kalikan dengan bobot global tiap sub-kriteria (bobot kriteria utama x bobot lokal sub-kriteria).
-     * 6. Tentukan solusi ideal positif (nilai maksimum tiap kolom) dan negatif (nilai minimum tiap kolom).
-     * 7. Hitung jarak tiap alternatif ke solusi ideal positif (D+) dan negatif (D-).
-     * 8. Skor akhir (closeness coefficient) = D- / (D+ + D-). Semakin besar, semakin direkomendasikan.
-     *
-     * @return array<int, array{alternative_id: int, score: float}> Belum diurutkan/diberi rank.
-     */
+
     public function calculate(TestSession $testSession): array
     {
         // 1. Skor rata-rata user per sub-kriteria

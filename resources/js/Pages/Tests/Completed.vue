@@ -1,5 +1,5 @@
 <script setup>
-import { router } from '@inertiajs/vue3';
+import { router, Head } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
@@ -32,6 +32,8 @@ function retryCalculation() {
 </script>
 
 <template>
+    <Head title="Hasil Rekomendasi" />
+
     <AuthenticatedLayout>
         <template #header>
             <h1 class="text-xl font-semibold text-gray-800">Hasil Rekomendasi</h1>
@@ -57,7 +59,7 @@ function retryCalculation() {
                 >
                     {{ retrying ? 'Menghitung…' : 'Coba Hitung Ulang' }}
                 </button>
-                <p v-if="retryError" class="text-xs text-red-600 mt-3">{{ retryError }}</p>
+                <p v-if="retryError" class="text-xs text-red-600 mt-3" role="alert">{{ retryError }}</p>
             </div>
 
             <div v-else class="space-y-3">
@@ -86,7 +88,14 @@ function retryCalculation() {
                     <p v-if="detail.alternative?.description" class="text-xs text-gray-500 ml-8">
                         {{ detail.alternative.description }}
                     </p>
-                    <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2 ml-8">
+                    <div
+                        class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2 ml-8"
+                        role="progressbar"
+                        :aria-valuenow="scorePercent(detail.score)"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        :aria-label="`Skor kecocokan ${detail.alternative?.name ?? ''}`"
+                    >
                         <div
                             class="h-full bg-teal-500"
                             :style="{ width: scorePercent(detail.score) + '%' }"

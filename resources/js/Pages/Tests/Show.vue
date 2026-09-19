@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -12,6 +12,8 @@ const props = defineProps({
 const answers = ref({ ...props.existingAnswers });
 
 const failedQuestionIds = reactive(new Set());
+
+const inactiveQuestionIds = reactive(new Set());
 
 const findFirstUnanswered = () => {
     const index = props.questions.findIndex((q) => !(q.id in answers.value));
@@ -27,12 +29,21 @@ let advanceTimeout = null;
 
 const currentQuestion = computed(() => props.questions[currentIndex.value]);
 const totalQuestions = computed(() => props.questions.length);
-const answeredCount = computed(() => Object.keys(answers.value).length);
-const progressPercent = computed(() =>
-    Math.round((answeredCount.value / totalQuestions.value) * 100)
-);
 const isLastQuestion = computed(() => currentIndex.value === totalQuestions.value - 1);
 const hasFailedSaves = computed(() => failedQuestionIds.size > 0);
+
+const requiredQuestions = computed(() =>
+    props.questions.filter((q) => !inactiveQuestionIds.has(q.id))
+);
+const answeredCount = computed(() =>
+    requiredQuestions.value.filter((q) => q.id in answers.value).length
+);
+const progressPercent = computed(() =>
+    requiredQuestions.value.length === 0
+        ? 100
+        : Math.round((answeredCount.value / requiredQuestions.value.length) * 100)
+);
+const isComplete = computed(() => answeredCount.value >= requiredQuestions.value.length);
 
 const scaleOptions = [
     { value: 1, label: 'Sangat Tidak Setuju' },
@@ -49,8 +60,20 @@ function cancelPendingAdvance() {
     }
 }
 
+function scheduleAdvance() {
+    cancelPendingAdvance();
+    advanceTimeout = setTimeout(() => {
+        if (!isLastQuestion.value) {
+            currentIndex.value++;
+        }
+        advanceTimeout = null;
+    }, 250);
+}
+
 async function selectAnswer(value) {
     const question = currentQuestion.value;
+    if (!question || inactiveQuestionIds.has(question.id)) return;
+
     answers.value[question.id] = value;
     saving.value = true;
     errorMessage.value = null;
@@ -71,6 +94,20 @@ async function selectAnswer(value) {
             }),
         });
 
+        if (response.status === 422) {
+            const data = await response.json().catch(() => null);
+
+            if (data?.errors?.question_id) {
+
+                inactiveQuestionIds.add(question.id);
+                failedQuestionIds.delete(question.id);
+                errorMessage.value = 'Soal ini sudah tidak berlaku dan dilewati otomatis dari daftar wajib.';
+                saving.value = false;
+                scheduleAdvance();
+                return;
+            }
+        }
+
         if (!response.ok) throw new Error('Response tidak OK');
 
         failedQuestionIds.delete(question.id);
@@ -82,13 +119,7 @@ async function selectAnswer(value) {
         saving.value = false;
     }
 
-    cancelPendingAdvance();
-    advanceTimeout = setTimeout(() => {
-        if (!isLastQuestion.value) {
-            currentIndex.value++;
-        }
-        advanceTimeout = null;
-    }, 250);
+    scheduleAdvance();
 }
 
 async function retryFailedSave(questionId) {
@@ -136,6 +167,8 @@ function finishTest() {
 </script>
 
 <template>
+    <Head title="Isi Tes" />
+
     <AuthenticatedLayout>
         <template #header>
             <h1 class="text-xl font-semibold text-gray-800">Isi Tes</h1>
@@ -147,7 +180,7 @@ function finishTest() {
                 <div class="flex justify-between text-xs text-gray-500 mb-1">
                     <span>Soal {{ currentIndex + 1 }} dari {{ totalQuestions }}</span>
                     <span>
-                        {{ answeredCount }}/{{ totalQuestions }} terjawab
+                        {{ answeredCount }}/{{ requiredQuestions.length }} terjawab
                         <span v-if="saving" class="text-teal-500">· menyimpan…</span>
                     </span>
                 </div>
@@ -159,8 +192,16 @@ function finishTest() {
                 </div>
             </div>
 
+            <!-- Kartu soal nonaktif -->
+            <div
+                v-if="currentQuestion && inactiveQuestionIds.has(currentQuestion.id)"
+                class="p-6 border border-gray-200 bg-gray-50 rounded-lg text-center text-sm text-gray-500"
+            >
+                Soal ini sudah tidak berlaku lagi dan tidak perlu dijawab.
+            </div>
+
             <!-- Kartu soal -->
-            <div v-if="currentQuestion" class="p-6 border border-gray-200 rounded-lg">
+            <div v-else-if="currentQuestion" class="p-6 border border-gray-200 rounded-lg">
                 <p class="text-xs text-teal-600 font-medium mb-2">
                     {{ currentQuestion.sub_criteria?.name }}
                 </p>
@@ -206,7 +247,7 @@ function finishTest() {
                     v-if="isLastQuestion"
                     type="button"
                     @click="finishTest"
-                    :disabled="completing || answeredCount < totalQuestions || hasFailedSaves"
+                    :disabled="completing || !isComplete || hasFailedSaves"
                     class="px-5 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                 >
                     {{ completing ? 'Menyelesaikan…' : 'Selesai & Lihat Hasil' }}
@@ -233,9 +274,13 @@ function finishTest() {
                     class="w-2.5 h-2.5 rounded-full transition"
                     :class="[
                         index === currentIndex ? 'ring-2 ring-teal-400' : '',
-                        failedQuestionIds.has(q.id) ? 'bg-red-500' : (q.id in answers ? 'bg-teal-500' : 'bg-gray-200'),
+                        inactiveQuestionIds.has(q.id)
+                            ? 'bg-gray-300'
+                            : (failedQuestionIds.has(q.id) ? 'bg-red-500' : (q.id in answers ? 'bg-teal-500' : 'bg-gray-200')),
                     ]"
-                    :title="failedQuestionIds.has(q.id) ? `Soal ${index + 1} — gagal tersimpan` : `Soal ${index + 1}`"
+                    :title="inactiveQuestionIds.has(q.id)
+                        ? `Soal ${index + 1} — sudah tidak berlaku`
+                        : (failedQuestionIds.has(q.id) ? `Soal ${index + 1} — gagal tersimpan` : `Soal ${index + 1}`)"
                 ></button>
             </div>
         </div>

@@ -1,21 +1,38 @@
 <script setup>
-import { useForm, Link } from '@inertiajs/vue3';
+import { computed } from 'vue';
+import { useForm, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     inProgressSession: { type: Object, default: null },
     defaultLifePhase: { type: String, default: null },
+    // Dikirim dari TestController::create() via LifePhase::assignableToUserOptions().
+    // Hanya berisi { value: label }. Deskripsi tetap di frontend (murni teks
+    // UX, bukan nilai bisnis), supaya tidak perlu menambah field non-enum ke
+    // backend hanya untuk copy tampilan.
+    lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
 const form = useForm({
     life_phase: props.defaultLifePhase ?? '',
 });
 
-const options = [
-    { value: 'siswa', label: 'Siswa', desc: 'Masih sekolah (SMP/SMA) dan sedang menimbang jurusan kuliah' },
-    { value: 'mahasiswa', label: 'Mahasiswa', desc: 'Sedang kuliah atau baru lulus, mencari arah karier' },
-    { value: 'pekerja', label: 'Pekerja', desc: 'Sudah bekerja dan mempertimbangkan pengembangan atau perubahan karier' },
-];
+// Deskripsi per opsi -- keyed by value yang SAMA dengan lifePhaseOptions dari
+// backend, supaya value/label tetap satu sumber kebenaran, cuma desc yang
+// lokal di sini.
+const descriptions = {
+    siswa: 'Masih sekolah (SMP/SMA) dan sedang menimbang jurusan kuliah',
+    mahasiswa: 'Sedang kuliah atau baru lulus, mencari arah karier',
+    pekerja: 'Sudah bekerja dan mempertimbangkan pengembangan atau perubahan karier',
+};
+
+const options = computed(() =>
+    Object.entries(props.lifePhaseOptions).map(([value, label]) => ({
+        value,
+        label,
+        desc: descriptions[value] ?? '',
+    }))
+);
 
 function submit() {
     if (props.inProgressSession) {
@@ -30,6 +47,8 @@ function submit() {
 </script>
 
 <template>
+    <Head title="Mulai Tes" />
+
     <AuthenticatedLayout>
         <template #header>
             <h1 class="text-xl font-semibold text-gray-800">Mulai Tes Minat, Bakat & Kepribadian</h1>

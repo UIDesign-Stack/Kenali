@@ -10,7 +10,7 @@ class SendPsychologistMessageRequest extends FormRequest
     {
         $consultation = $this->route('consultation');
 
-        return $consultation->psychologistProfile->user_id === $this->user()->id;
+        return $consultation?->psychologistProfile?->user_id === $this->user()->id;
     }
 
     public function rules(): array

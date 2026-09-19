@@ -21,7 +21,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user() ? [
                     ...$request->user()->only('id', 'name', 'email'),
-                    'roles' => $request->user()->getRoleNames(), // ['admin'] / ['user'] / ['psikolog']
+                    'roles' => $request->user()->getRoleNames(),
                 ] : null,
             ],
             'flash' => [

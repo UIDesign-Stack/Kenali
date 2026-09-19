@@ -1,8 +1,8 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
-const props = defineProps({
+defineProps({
     role: { type: String, required: true },
     stats: { type: Object, default: () => ({}) },
     topAlternatives: { type: Array, default: () => [] },
@@ -50,12 +50,19 @@ function formatDate(dateStr) {
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Catatan: latestSession berasal dari DashboardController::userData() yang
+// memakai ->first() (bukan ->get()), jadi TIDAK kena bug limit(1) dan TIDAK
+// melalui transformasi setRelation('topDetail'). Backend di situ memang
+// mengirim result.details[] apa adanya -- details[0] di sini SUDAH BENAR,
+// jangan diubah ke topDetail seperti di halaman lain.
 function topAlternativeName(session) {
     return session?.result?.details?.[0]?.alternative?.name ?? null;
 }
 </script>
 
 <template>
+    <Head title="Dashboard" />
+
     <AuthenticatedLayout>
         <template #header>
             <h1 class="text-xl font-semibold text-gray-800">Dashboard</h1>
@@ -79,7 +86,9 @@ function topAlternativeName(session) {
                     <div class="p-4 border border-gray-200 rounded-lg">
                         <p class="text-2xl font-semibold text-gray-800">{{ stat(stats.total_test_sessions) }}</p>
                         <p class="text-xs text-gray-500 mt-1">Total Tes</p>
-                        <p class="text-[10px] text-gray-400">{{ stat(stats.completed_test_sessions) }} selesai</p>
+                        <p class="text-[10px] text-gray-400">
+                            {{ stat(stats.completed_test_sessions) }} selesai · {{ stat(stats.in_progress_test_sessions) }} berjalan
+                        </p>
                     </div>
                     <div class="p-4 border border-gray-200 rounded-lg">
                         <p class="text-2xl font-semibold text-gray-800">{{ stat(stats.total_consultations) }}</p>
@@ -101,7 +110,14 @@ function topAlternativeName(session) {
                                 <span>{{ item.name }}</span>
                                 <span>{{ item.total }}x</span>
                             </div>
-                            <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                                class="w-full h-2 bg-gray-100 rounded-full overflow-hidden"
+                                role="progressbar"
+                                :aria-valuenow="item.percent"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                :aria-label="`${item.name}: ${item.total} kali direkomendasikan`"
+                            >
                                 <div class="h-full bg-teal-500" :style="{ width: item.percent + '%' }"></div>
                             </div>
                         </div>

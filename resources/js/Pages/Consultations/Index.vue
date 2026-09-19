@@ -1,5 +1,5 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 defineProps({
@@ -20,12 +20,17 @@ const statusColor = {
     cancelled: 'bg-gray-200 text-gray-500',
 };
 
-function typeLabel(type) {
-    return type === 'chat' ? 'Chat' : type === 'video_call' ? 'Video Call' : type;
-}
+// Tipe konsultasi final: cuma 'chat' dan 'tatap_muka' (permintaan pertemuan
+// langsung). 'video_call' sempat ada tapi sudah dihapus dari sistem.
+const typeLabel = {
+    chat: 'Chat',
+    tatap_muka: 'Tatap Muka Langsung',
+};
 </script>
 
 <template>
+    <Head title="Konsultasi Saya" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center justify-between">
@@ -55,17 +60,12 @@ function typeLabel(type) {
                     class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition"
                 >
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-sm font-semibold text-gray-800">
-                            {{ c.psychologist_profile?.user?.name ?? 'Psikolog tidak diketahui' }}
-                        </span>
-                        <span
-                            class="text-[10px] px-2 py-0.5 rounded-full"
-                            :class="statusColor[c.status] ?? 'bg-gray-100 text-gray-500'"
-                        >
+                        <span class="text-sm font-semibold text-gray-800">{{ c.psychologist_profile.user.name }}</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full" :class="statusColor[c.status] ?? 'bg-gray-100 text-gray-500'">
                             {{ statusLabel[c.status] ?? c.status }}
                         </span>
                     </div>
-                    <p class="text-xs text-gray-400">{{ typeLabel(c.type) }}</p>
+                    <p class="text-xs text-gray-400">{{ typeLabel[c.type] ?? c.type }}</p>
                 </Link>
             </div>
         </div>

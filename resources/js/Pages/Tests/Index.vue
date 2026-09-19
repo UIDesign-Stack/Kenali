@@ -1,9 +1,11 @@
 <script setup>
-import { Link } from '@inertiajs/vue3';
+import { Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
-defineProps({
+const props = defineProps({
     sessions: { type: Array, required: true },
+    // Dikirim dari TestController::index() via LifePhase::assignableToUserOptions().
+    lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
 const statusLabel = {
@@ -16,14 +18,11 @@ const statusColor = {
     in_progress: 'bg-amber-100 text-amber-700',
 };
 
-const lifePhaseLabel = {
-    siswa: 'Siswa',
-    mahasiswa: 'Mahasiswa',
-    pekerja: 'Pekerja',
-};
-
+// Backend mengirim result.topDetail (rank teratas), BUKAN result.details[0].
+// Relasi `details` sengaja di-unset di TestController::index() setelah
+// topDetail dihitung -- lihat catatan limit(1) di controller.
 function topAlternativeName(session) {
-    return session.result?.details?.[0]?.alternative?.name ?? null;
+    return session.result?.topDetail?.alternative?.name ?? null;
 }
 
 function formatDate(dateStr) {
@@ -39,6 +38,8 @@ function formatDate(dateStr) {
 </script>
 
 <template>
+    <Head title="Riwayat Tes" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center justify-between">
@@ -72,7 +73,7 @@ function formatDate(dateStr) {
                 >
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-semibold text-gray-800">
-                            {{ lifePhaseLabel[session.life_phase] ?? session.life_phase }}
+                            {{ lifePhaseOptions[session.life_phase] ?? session.life_phase }}
                         </span>
                         <span
                             class="text-[10px] px-2 py-0.5 rounded-full"

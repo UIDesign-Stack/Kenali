@@ -13,6 +13,7 @@ use App\Http\Controllers\PsychologistConsultationController;
 use App\Http\Controllers\TestController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schedule;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -23,6 +24,8 @@ Route::get('/', function () {
         'phpVersion'     => PHP_VERSION,
     ]);
 });
+
+Schedule::command('consultations:revert-overdue')->hourly();
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -84,12 +87,20 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('ad
     Route::put('/alternatives/{alternative}/profile', [AlternativeProfileController::class, 'update'])->name('alternative-profiles.update');
 
     Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
+    Route::get('/users/create-staff', [UserManagementController::class, 'createStaff'])->name('users.create-staff');
+    Route::post('/users/create-staff', [UserManagementController::class, 'storeStaff'])->name('users.store-staff');
     Route::get('/users/{user}', [UserManagementController::class, 'show'])->name('users.show');
+    Route::get('/users/{user}/edit', [UserManagementController::class, 'edit'])->name('users.edit');
+    Route::put('/users/{user}', [UserManagementController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/toggle-active', [UserManagementController::class, 'toggleActive'])->name('users.toggle-active');
+    Route::post('/users/{user}/reset-password', [UserManagementController::class, 'resetPassword'])->name('users.reset-password');
 
     Route::get('/psychologists', [PsychologistManagementController::class, 'index'])->name('psychologists.index');
     Route::patch('/psychologists/{psychologistProfile}/toggle-verified', [PsychologistManagementController::class, 'toggleVerified'])->name('psychologists.toggle-verified');
     Route::patch('/psychologists/{psychologistProfile}/toggle-available', [PsychologistManagementController::class, 'toggleAvailable'])->name('psychologists.toggle-available');
+
+    Route::get('/psychologists/{psychologistProfile}/consultations', [PsychologistManagementController::class, 'consultations'])->name('psychologists.consultations');
+    Route::patch('/consultations/{consultation}/force-cancel', [PsychologistManagementController::class, 'forceCancelConsultation'])->name('consultations.force-cancel');
 });
 
 require __DIR__.'/auth.php';
