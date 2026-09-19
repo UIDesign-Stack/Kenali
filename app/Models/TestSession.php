@@ -44,9 +44,4 @@ class TestSession extends Model
     {
         return $this->hasMany(Consultation::class);
     }
-
-    public function aiChatSessions()
-    {
-        return $this->hasMany(AiChatSession::class);
-    }
 }

@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('test_session_id')->nullable()->constrained('test_sessions')->nullOnDelete();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('psychologist_profile_id')->constrained('psychologist_profiles')->cascadeOnDelete();
-            $table->enum('type', ['chat', 'video_call'])->default('chat');
+            $table->enum('type', ['chat', 'tatap_muka'])->default('chat');
             $table->enum('status', ['pending', 'scheduled', 'completed', 'cancelled'])->default('pending');
             $table->timestamp('scheduled_at')->nullable();
             $table->unsignedSmallInteger('duration_minutes')->nullable();
