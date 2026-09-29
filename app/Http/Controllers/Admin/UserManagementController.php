@@ -6,6 +6,8 @@ use App\Enums\ConsultationStatus;
 use App\Enums\LifePhase;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Notifications\AccountStatusChanged;
+use App\Notifications\StaffAccountCreated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -80,10 +82,6 @@ class UserManagementController extends Controller
             'specialization' => ['required_if:role,psikolog', 'nullable', 'string', 'max:255'],
         ]);
 
-        // Dibungkus transaction: User::create() + assignRole() + (opsional)
-        // psychologistProfile()->create() harus atomic, mencegah user dengan
-        // role 'psikolog' tapi tanpa psychologistProfile kalau salah satu
-        // langkah gagal di tengah.
         $user = DB::transaction(function () use ($validated) {
             $user = User::create([
                 'name'              => $validated['name'],
@@ -105,6 +103,8 @@ class UserManagementController extends Controller
 
             return $user;
         });
+
+        $user->notify(new StaffAccountCreated($validated['role']));
 
         return redirect()->route('admin.users.index')
             ->with('success', "Akun {$validated['role']} untuk {$user->name} berhasil dibuat.");
@@ -137,9 +137,6 @@ class UserManagementController extends Controller
             ]);
         }
 
-        // Kalau user ini SEDANG punya role 'psikolog' dan role barunya BUKAN
-        // 'psikolog' lagi, pastikan tidak ada konsultasi aktif yang akan
-        // "kehilangan" psikolognya di tengah sesi.
         $wasPsikolog = $user->hasRole('psikolog');
         $willStayPsikolog = $validated['role'] === 'psikolog';
 
@@ -179,6 +176,8 @@ class UserManagementController extends Controller
         }
 
         $user->update(['is_active' => ! $user->is_active]);
+
+        $user->notify(new AccountStatusChanged($user->is_active));
 
         return back()->with('success', $user->is_active
             ? "Akun {$user->name} diaktifkan kembali."

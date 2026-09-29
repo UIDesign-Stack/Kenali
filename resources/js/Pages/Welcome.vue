@@ -1,386 +1,836 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
 defineProps({
-    canLogin: {
-        type: Boolean,
-    },
-    canRegister: {
-        type: Boolean,
-    },
-    laravelVersion: {
-        type: String,
-        required: true,
-    },
-    phpVersion: {
-        type: String,
-        required: true,
-    },
+    canLogin: Boolean,
+    canRegister: Boolean,
+    laravelVersion: String,
+    phpVersion: String,
 });
 
-function handleImageError() {
-    document.getElementById('screenshot-container')?.classList.add('!hidden');
-    document.getElementById('docs-card')?.classList.add('!row-span-1');
-    document.getElementById('docs-card-content')?.classList.add('!flex-row');
-    document.getElementById('background')?.classList.add('!hidden');
+/* ---------------------------------------------------------------
+ | Data simulasi untuk "Coba dulu" di hero.
+ | Contoh SAW sederhana (nilai x bobot, lalu dijumlahkan).
+ | Ganti kriteria & bobotnya dengan data SPK aslimu.
+ --------------------------------------------------------------- */
+const groups = [
+    {
+        key: 'minat',
+        label: 'Minat',
+        color: 'var(--violet)',
+        tags: [
+            { id: 'gambar', label: 'Menggambar & desain' },
+            { id: 'teknologi', label: 'Teknologi' },
+            { id: 'mengajar', label: 'Berbagi ilmu' },
+            { id: 'alam', label: 'Alam & lingkungan' },
+        ],
+    },
+    {
+        key: 'bakat',
+        label: 'Bakat',
+        color: 'var(--rose)',
+        tags: [
+            { id: 'analitis', label: 'Menganalisis' },
+            { id: 'bicara', label: 'Berbicara di depan umum' },
+            { id: 'merakit', label: 'Membuat & merakit' },
+            { id: 'menulis', label: 'Menulis' },
+        ],
+    },
+    {
+        key: 'karakter',
+        label: 'Karakter',
+        color: 'var(--sky)',
+        tags: [
+            { id: 'teliti', label: 'Teliti' },
+            { id: 'empatik', label: 'Empatik' },
+            { id: 'berani', label: 'Berani ambil risiko' },
+            { id: 'tenang', label: 'Tenang saat tertekan' },
+        ],
+    },
+];
+
+// bobot 0-3: seberapa kuat sebuah ciri mendukung pilihan tersebut
+const careers = [
+    { name: 'UI/UX Designer', color: 'var(--violet)', w: { gambar: 3, teknologi: 2, analitis: 1, merakit: 2, bicara: 1, teliti: 2, empatik: 3, berani: 1, tenang: 1 } },
+    { name: 'Software Engineer', color: 'var(--sky)', w: { teknologi: 3, analitis: 3, merakit: 3, menulis: 1, teliti: 3, empatik: 1, berani: 1, tenang: 2 } },
+    { name: 'Guru & Pendidik', color: 'var(--rose)', w: { mengajar: 3, gambar: 1, teknologi: 1, bicara: 3, menulis: 1, teliti: 1, empatik: 3, tenang: 2 } },
+    { name: 'Psikolog', color: 'var(--violet)', w: { mengajar: 1, analitis: 2, bicara: 2, menulis: 2, teliti: 2, empatik: 3, tenang: 3 } },
+    { name: 'Jurnalis', color: 'var(--rose)', w: { alam: 1, analitis: 2, bicara: 2, menulis: 3, teliti: 2, berani: 3, tenang: 1 } },
+    { name: 'Peneliti Lingkungan', color: 'var(--sky)', w: { alam: 3, teknologi: 1, analitis: 3, merakit: 1, menulis: 2, teliti: 3, berani: 1, tenang: 2 } },
+];
+
+const picked = ref(['gambar', 'analitis', 'empatik']);
+
+function toggle(id) {
+    picked.value = picked.value.includes(id)
+        ? picked.value.filter((x) => x !== id)
+        : [...picked.value, id];
 }
+
+const ranked = computed(() => {
+    const max = picked.value.length * 3;
+    return careers
+        .map((c) => ({
+            ...c,
+            pct: max
+                ? Math.round((picked.value.reduce((sum, id) => sum + (c.w[id] || 0), 0) / max) * 100)
+                : 0,
+        }))
+        .sort((a, b) => b.pct - a.pct || a.name.localeCompare(b.name));
+});
+
+const top = computed(() => (picked.value.length ? ranked.value[0] : null));
+
+/* ---------- diagram Venn: ukuran lingkaran mengikuti jumlah pilihan ---------- */
+const orbs = [
+    { key: 'minat', label: 'Minat', color: '#9277FF', dot: 'var(--violet)', x: 155, y: 165 },
+    { key: 'bakat', label: 'Bakat', color: '#FF5C93', dot: 'var(--rose)', x: 245, y: 165 },
+    { key: 'karakter', label: 'Karakter', color: '#4DB0FF', dot: 'var(--sky)', x: 200, y: 240 },
+];
+
+function countOf(key) {
+    const g = groups.find((x) => x.key === key);
+    return g.tags.filter((t) => picked.value.includes(t.id)).length;
+}
+
+function scaleOf(key) {
+    return 0.6 + countOf(key) * 0.16;
+}
+
+/* ---------------------------------------------------------------
+ | Efek scroll (semuanya hanya memakai `transform`):
+ |   1. Hero: tiga lingkaran Venn naik dengan kecepatan yang sangat berbeda,
+ |      jadi formasinya terurai saat kamu scroll turun.
+ |   2. Tiga hal -> Cara kerja: tiga lingkaran "terbang" dari baris
+ |      Minat/Bakat/Karakter lalu bertemu membentuk Venn.
+ |   3. Ajakan mendaftar: lingkaran di panel berkumpul membentuk Venn
+ |      tepat saat panel tiba di tengah layar.
+ |
+ | - Hanya aktif di layar >= 768px dan jika pengguna TIDAK memilih
+ |   "reduce motion". Selain itu halaman tampil statis (tanpa gerak).
+ | - Dihitung sekali per frame (requestAnimationFrame), jadi ringan.
+ --------------------------------------------------------------- */
+const fly = ref(false);
+const vennSlot = ref(null); // tempat Venn akhir di bagian Cara kerja
+const coreDot = ref(null); // titik kecil di pusat irisan
+const dots = []; // penanda posisi awal di tiap baris pilar
+const flyOrbs = []; // lingkaran yang bergerak (lapisan fixed)
+
+const heroLayers = []; // tiga lapisan lingkaran di hero
+const heroCore = ref(null); // titik pusat di hero
+const ctaPanel = ref(null); // panel ajakan mendaftar
+const ctaOrbs = []; // tiga lingkaran di dalam panel
+
+// Seberapa jauh tiap lingkaran bergeser per 1px scroll. Makin besar & makin
+// berbeda antar-lingkaran = efek parallax makin terasa. Ubah di sini untuk menyetel.
+const heroDepth = [0.1, 0.28, 0.5]; // hero: naik lebih cepat dari scroll biasa
+const ctaDepth = [0.2, 0.35, 0.5]; // panel ajakan mendaftar
+
+let raf = 0;
+let mq = null;
+
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const smooth = (v) => v * v * (3 - 2 * v);
+
+function resetParallax() {
+    heroLayers.forEach((el) => el && (el.style.transform = ''));
+    if (heroCore.value) {
+        heroCore.value.style.transform = '';
+        heroCore.value.style.opacity = '';
+    }
+    ctaOrbs.forEach((el) => el && (el.style.transform = ''));
+}
+
+function render() {
+    raf = 0;
+    if (!fly.value) {
+        resetParallax();
+        return;
+    }
+
+    const vh = window.innerHeight;
+
+    // 1. hero: tiap lapisan naik dengan kecepatan berbeda, formasi Venn terurai
+    const y = Math.min(window.scrollY, 700);
+    heroLayers.forEach((el, i) => el && (el.style.transform = `translateY(${-y * heroDepth[i]}px)`));
+    if (heroCore.value) {
+        // titik pusat menghilang seiring lingkaran menjauh dari titik temunya
+        heroCore.value.style.transform = `translateY(${-y * 0.29}px)`;
+        heroCore.value.style.opacity = 1 - clamp01(y / 180);
+    }
+
+    // 3. ajakan mendaftar: lingkaran berkumpul membentuk Venn saat panel di tengah layar
+    if (ctaPanel.value) {
+        const c = ctaPanel.value.getBoundingClientRect();
+        const d = Math.max(-600, Math.min(600, c.top + c.height / 2 - vh / 2));
+        ctaOrbs.forEach((el, i) => el && (el.style.transform = `translateY(${-d * ctaDepth[i]}px)`));
+    }
+
+    // 2. Tiga hal -> Cara kerja: lingkaran terbang lalu bertemu
+    if (!vennSlot.value) return;
+
+    const s = vennSlot.value.getBoundingClientRect();
+    if (!s.width) return;
+
+    // 0 saat slot baru masuk dari bawah layar, 1 saat sudah kira-kira di tengah layar
+    const progress = clamp01((vh * 0.92 - s.top) / (vh * 0.5));
+    const k = s.width / 400; // skala dari koordinat Venn (400 lebar) ke piksel
+
+    orbs.forEach((o, i) => {
+        const dot = dots[i];
+        const el = flyOrbs[i];
+        if (!dot || !el) return;
+
+        const d = dot.getBoundingClientRect();
+        const fromX = d.left + d.width / 2;
+        const fromY = d.top + d.height / 2;
+        const toX = s.left + o.x * k;
+        const toY = s.top + (o.y - 40) * k;
+
+        // tiap lingkaran berangkat sedikit berbeda waktu, jadi geraknya tidak serempak
+        const e = smooth(clamp01(progress * 1.4 - i * 0.2));
+        const x = fromX + (toX - fromX) * e;
+        const y = fromY + (toY - fromY) * e;
+        const r = d.width / 2 + (85 * k * 0.85 - d.width / 2) * e;
+
+        el.style.transform = `translate(${x}px, ${y}px) scale(${r})`;
+    });
+
+    if (coreDot.value) {
+        coreDot.value.style.transform = `translate(${s.left + 200 * k}px, ${s.top + 150 * k}px)`;
+        coreDot.value.style.opacity = smooth(clamp01((progress - 0.85) / 0.15));
+    }
+}
+
+function schedule() {
+    if (!raf) raf = requestAnimationFrame(render);
+}
+
+function syncMotion() {
+    fly.value = mq.matches;
+    nextTick(schedule);
+}
+
+onMounted(() => {
+    mq = window.matchMedia('(min-width: 768px) and (prefers-reduced-motion: no-preference)');
+    syncMotion();
+    mq.addEventListener('change', syncMotion);
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    window.addEventListener('load', schedule);
+});
+
+onBeforeUnmount(() => {
+    if (mq) mq.removeEventListener('change', syncMotion);
+    window.removeEventListener('scroll', schedule);
+    window.removeEventListener('resize', schedule);
+    window.removeEventListener('load', schedule);
+    if (raf) cancelAnimationFrame(raf);
+});
+
+/* ---------------- konten statis ---------------- */
+const pillars = [
+    {
+        title: 'Minat',
+        color: 'var(--violet)',
+        text: 'Apa yang kamu suka, bahkan saat tidak ada yang menyuruh.',
+        q: 'Kegiatan apa yang bikin kamu lupa waktu?',
+    },
+    {
+        title: 'Bakat',
+        color: 'var(--rose)',
+        text: 'Hal yang kamu cepat kuasai dibanding kebanyakan orang.',
+        q: 'Tugas apa yang terasa ringan buatmu, tapi berat buat teman-temanmu?',
+    },
+    {
+        title: 'Karakter',
+        color: 'var(--sky)',
+        text: 'Cara kamu bersikap, mengambil keputusan, dan bekerja dengan orang lain.',
+        q: 'Saat rencana berantakan, kamu biasanya ngapain dulu?',
+    },
+];
+
+const steps = [
+    { color: 'var(--violet)', title: 'Isi profil singkat', text: 'Daftar dan ceritakan sedikit tentang dirimu.' },
+    { color: 'var(--rose)', title: 'Jawab pertanyaan', text: 'Ada tiga bagian: minat, bakat, dan karakter. Tidak ada jawaban benar atau salah.' },
+    { color: 'var(--sky)', title: 'Sistem menghitung', text: 'Tiap jawaban diberi nilai, dikalikan bobot kriteria, lalu dijumlahkan untuk setiap pilihan.' },
+    { color: 'var(--fg)', title: 'Baca hasilmu', text: 'Kamu mendapat urutan rekomendasi lengkap dengan alasannya.' },
+];
+
+const year = new Date().getFullYear();
 </script>
 
 <template>
-    <Head title="Welcome" />
-    <div class="bg-gray-50 text-black/50 dark:bg-black dark:text-white/50">
-        <img
-            id="background"
-            class="absolute -left-20 top-0 max-w-[877px]"
-            src="https://laravel.com/assets/img/welcome/background.svg"
+    <Head title="Kenali - temukan minat, bakat, dan karaktermu">
+        <meta
+            name="description"
+            content="Kenali membantumu memahami minat, bakat, dan karakter lewat sistem pendukung keputusan, lalu memberi rekomendasi yang cocok untukmu."
         />
-        <div
-            class="relative flex min-h-screen flex-col items-center justify-center selection:bg-[#FF2D20] selection:text-white"
-        >
-            <div class="relative w-full max-w-2xl px-6 lg:max-w-7xl">
-                <header
-                    class="grid grid-cols-2 items-center gap-2 py-10 lg:grid-cols-3"
-                >
-                    <div class="flex lg:col-start-2 lg:justify-center">
-                        <svg
-                            class="h-12 w-auto text-white lg:h-16 lg:text-[#FF2D20]"
-                            viewBox="0 0 62 65"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <path
-                                d="M61.8548 14.6253C61.8778 14.7102 61.8895 14.7978 61.8897 14.8858V28.5615C61.8898 28.737 61.8434 28.9095 61.7554 29.0614C61.6675 29.2132 61.5409 29.3392 61.3887 29.4265L49.9104 36.0351V49.1337C49.9104 49.4902 49.7209 49.8192 49.4118 49.9987L25.4519 63.7916C25.3971 63.8227 25.3372 63.8427 25.2774 63.8639C25.255 63.8714 25.2338 63.8851 25.2101 63.8913C25.0426 63.9354 24.8666 63.9354 24.6991 63.8913C24.6716 63.8838 24.6467 63.8689 24.6205 63.8589C24.5657 63.8389 24.5084 63.8215 24.456 63.7916L0.501061 49.9987C0.348882 49.9113 0.222437 49.7853 0.134469 49.6334C0.0465019 49.4816 0.000120578 49.3092 0 49.1337L0 8.10652C0 8.01678 0.0124642 7.92953 0.0348998 7.84477C0.0423783 7.8161 0.0598282 7.78993 0.0697995 7.76126C0.0884958 7.70891 0.105946 7.65531 0.133367 7.6067C0.152063 7.5743 0.179485 7.54812 0.20192 7.51821C0.230588 7.47832 0.256763 7.43719 0.290416 7.40229C0.319084 7.37362 0.356476 7.35243 0.388883 7.32751C0.425029 7.29759 0.457436 7.26518 0.498568 7.2415L12.4779 0.345059C12.6296 0.257786 12.8015 0.211853 12.9765 0.211853C13.1515 0.211853 13.3234 0.257786 13.475 0.345059L25.4531 7.2415H25.4556C25.4955 7.26643 25.5292 7.29759 25.5653 7.32626C25.5977 7.35119 25.6339 7.37362 25.6625 7.40104C25.6974 7.43719 25.7224 7.47832 25.7523 7.51821C25.7735 7.54812 25.8021 7.5743 25.8196 7.6067C25.8483 7.65656 25.8645 7.70891 25.8844 7.76126C25.8944 7.78993 25.9118 7.8161 25.9193 7.84602C25.9423 7.93096 25.954 8.01853 25.9542 8.10652V33.7317L35.9355 27.9844V14.8846C35.9355 14.7973 35.948 14.7088 35.9704 14.6253C35.9792 14.5954 35.9954 14.5692 36.0053 14.5405C36.0253 14.4882 36.0427 14.4346 36.0702 14.386C36.0888 14.3536 36.1163 14.3274 36.1375 14.2975C36.1674 14.2576 36.1923 14.2165 36.2272 14.1816C36.2559 14.1529 36.292 14.1317 36.3244 14.1068C36.3618 14.0769 36.3942 14.0445 36.4341 14.0208L48.4147 7.12434C48.5663 7.03694 48.7383 6.99094 48.9133 6.99094C49.0883 6.99094 49.2602 7.03694 49.4118 7.12434L61.3899 14.0208C61.4323 14.0457 61.4647 14.0769 61.5021 14.1055C61.5333 14.1305 61.5694 14.1529 61.5981 14.1803C61.633 14.2165 61.6579 14.2576 61.6878 14.2975C61.7103 14.3274 61.7377 14.3536 61.7551 14.386C61.7838 14.4346 61.8 14.4882 61.8199 14.5405C61.8312 14.5692 61.8474 14.5954 61.8548 14.6253ZM59.893 27.9844V16.6121L55.7013 19.0252L49.9104 22.3593V33.7317L59.8942 27.9844H59.893ZM47.9149 48.5566V37.1768L42.2187 40.4299L25.953 49.7133V61.2003L47.9149 48.5566ZM1.99677 9.83281V48.5566L23.9562 61.199V49.7145L12.4841 43.2219L12.4804 43.2194L12.4754 43.2169C12.4368 43.1945 12.4044 43.1621 12.3682 43.1347C12.3371 43.1097 12.3009 43.0898 12.2735 43.0624L12.271 43.0586C12.2386 43.0275 12.2162 42.9888 12.1887 42.9539C12.1638 42.9203 12.1339 42.8916 12.114 42.8567L12.1127 42.853C12.0903 42.8156 12.0766 42.7707 12.0604 42.7283C12.0442 42.6909 12.023 42.656 12.013 42.6161C12.0005 42.5688 11.998 42.5177 11.9931 42.4691C11.9881 42.4317 11.9781 42.3943 11.9781 42.3569V15.5801L6.18848 12.2446L1.99677 9.83281ZM12.9777 2.36177L2.99764 8.10652L12.9752 13.8513L22.9541 8.10527L12.9752 2.36177H12.9777ZM18.1678 38.2138L23.9574 34.8809V9.83281L19.7657 12.2459L13.9749 15.5801V40.6281L18.1678 38.2138ZM48.9133 9.14105L38.9344 14.8858L48.9133 20.6305L58.8909 14.8846L48.9133 9.14105ZM47.9149 22.3593L42.124 19.0252L37.9323 16.6121V27.9844L43.7219 31.3174L47.9149 33.7317V22.3593ZM24.9533 47.987L39.59 39.631L46.9065 35.4555L36.9352 29.7145L25.4544 36.3242L14.9907 42.3482L24.9533 47.987Z"
-                                fill="currentColor"
-                            />
-                        </svg>
-                    </div>
-                    <nav v-if="canLogin" class="-mx-3 flex flex-1 justify-end">
-                        <Link
-                            v-if="$page.props.auth.user"
-                            :href="route('dashboard')"
-                            class="rounded-md px-3 py-2 text-black ring-1 ring-transparent transition hover:text-black/70 focus:outline-none focus-visible:ring-[#FF2D20] dark:text-white dark:hover:text-white/80 dark:focus-visible:ring-white"
-                        >
-                            Dashboard
+        <link rel="preconnect" href="https://fonts.bunny.net" />
+        <link
+            href="https://fonts.bunny.net/css?family=bricolage-grotesque:600,700,800|figtree:400,500,600,700&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
+    <div class="kenali min-h-screen antialiased">
+        <!-- ================= NAVBAR ================= -->
+        <header class="site-header sticky top-0 z-30 backdrop-blur">
+            <div class="wrap flex items-center justify-between py-3.5">
+                <a href="/" class="flex items-center gap-2.5" aria-label="Kenali, ke beranda">
+                    <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+                        <g style="isolation: isolate">
+                            <circle class="screen" cx="12.5" cy="13" r="9" fill="#9277FF" />
+                            <circle class="screen" cx="21.5" cy="13" r="9" fill="#FF5C93" />
+                            <circle class="screen" cx="17" cy="21" r="9" fill="#4DB0FF" />
+                        </g>
+                    </svg>
+                    <span class="display text-2xl font-extrabold tracking-tight">Kenali</span>
+                </a>
+
+                <nav class="hidden items-center gap-8 text-[15px] font-semibold md:flex" aria-label="Bagian halaman">
+                    <a href="#tiga-hal" class="nav-link">Tiga hal yang dibaca</a>
+                    <a href="#cara-kerja" class="nav-link">Cara kerja</a>
+                </nav>
+
+                <div class="flex items-center gap-4">
+                    <Link v-if="$page.props.auth.user" :href="route('dashboard')" class="btn btn-sm">
+                        Dashboard
+                    </Link>
+                    <template v-else>
+                        <Link v-if="canLogin" :href="route('login')" class="nav-link text-[15px] font-semibold">
+                            Masuk
                         </Link>
+                        <Link v-if="canRegister" :href="route('register')" class="btn btn-sm">Daftar</Link>
+                    </template>
+                </div>
+            </div>
+        </header>
 
-                        <template v-else>
-                            <Link
-                                :href="route('login')"
-                                class="rounded-md px-3 py-2 text-black ring-1 ring-transparent transition hover:text-black/70 focus:outline-none focus-visible:ring-[#FF2D20] dark:text-white dark:hover:text-white/80 dark:focus-visible:ring-white"
-                            >
-                                Log in
-                            </Link>
+        <!-- lapisan lingkaran yang bergerak saat scroll (di belakang konten) -->
+        <svg v-if="fly" class="fly-layer" aria-hidden="true">
+            <g style="isolation: isolate">
+                <circle
+                    v-for="(o, i) in orbs"
+                    :key="o.key"
+                    :ref="(el) => (flyOrbs[i] = el)"
+                    class="fly-orb"
+                    r="1"
+                    :fill="o.color"
+                    style="transform: translate(-200px, -200px)"
+                />
+            </g>
+            <circle ref="coreDot" r="4" fill="#0D1130" style="opacity: 0; transform: translate(-200px, -200px)" />
+        </svg>
 
-                            <Link
-                                v-if="canRegister"
-                                :href="route('register')"
-                                class="rounded-md px-3 py-2 text-black ring-1 ring-transparent transition hover:text-black/70 focus:outline-none focus-visible:ring-[#FF2D20] dark:text-white dark:hover:text-white/80 dark:focus-visible:ring-white"
-                            >
-                                Register
-                            </Link>
+        <main>
+            <!-- ================= HERO ================= -->
+            <section class="wrap grid gap-x-10 gap-y-12 pb-24 pt-10 md:pt-16 lg:grid-cols-12 lg:gap-y-14">
+                <!-- teks utama -->
+                <div class="lg:col-span-5 lg:col-start-1 lg:row-start-1 lg:self-center">
+                    <h1 class="display text-[2.9rem] font-extrabold leading-[1.03] tracking-tight sm:text-6xl">
+                        Kenali dirimu sebelum memilih jalan.
+                    </h1>
+                    <p class="muted mt-6 max-w-md text-lg leading-relaxed">
+                        Jawab pertanyaan tentang minat, bakat, dan karaktermu. Sistem kami menghitungnya dan
+                        mengurutkan pilihan yang paling cocok untukmu.
+                    </p>
+
+                    <div class="mt-8 flex flex-wrap items-center gap-x-7 gap-y-4">
+                        <Link v-if="$page.props.auth.user" :href="route('dashboard')" class="btn">
+                            Lanjut ke dashboard
+                        </Link>
+                        <Link v-else-if="canRegister" :href="route('register')" class="btn">Mulai tes</Link>
+                        <Link v-else-if="canLogin" :href="route('login')" class="btn">Masuk untuk mulai</Link>
+
+                        <a href="#cara-kerja" class="nav-link font-semibold">Lihat cara kerja</a>
+                    </div>
+                </div>
+
+                <!-- Venn: lingkaran membesar sesuai pilihanmu -->
+                <div class="lg:col-span-7 lg:col-start-6 lg:row-start-1">
+                    <svg
+                        viewBox="0 40 400 320"
+                        class="mx-auto block w-full max-w-[460px] overflow-visible lg:mx-0"
+                        role="img"
+                        aria-label="Tiga lingkaran cahaya beririsan yang mewakili minat, bakat, dan karakter. Ukurannya bertambah sesuai jumlah ciri yang kamu pilih."
+                    >
+                        <!-- pembungkus .layer = digeser saat scroll; .enter = animasi masuk; .orb = ukuran sesuai pilihan -->
+                        <g v-for="(o, i) in orbs" :key="o.key" :ref="(el) => (heroLayers[i] = el)" class="layer">
+                            <g class="enter" :style="{ '--d': i * 160 + 'ms' }">
+                                <circle
+                                    class="orb"
+                                    :cx="o.x"
+                                    :cy="o.y"
+                                    r="85"
+                                    :fill="o.color"
+                                    :style="{ transform: 'scale(' + scaleOf(o.key) + ')' }"
+                                />
+                            </g>
+                        </g>
+                        <circle ref="heroCore" cx="200" cy="190" r="5" fill="#0D1130" aria-hidden="true" />
+                    </svg>
+
+                    <ul
+                        class="mx-auto mt-3 flex max-w-[460px] flex-wrap justify-center gap-x-6 gap-y-1 text-sm font-semibold lg:mx-0 lg:justify-start"
+                    >
+                        <li v-for="o in orbs" :key="o.key" class="flex items-center gap-2">
+                            <span class="dot" :style="{ background: o.dot }"></span>
+                            {{ o.label }}
+                            <span class="muted tabular-nums">{{ countOf(o.key) }} dipilih</span>
+                        </li>
+                    </ul>
+
+                    <p class="mt-4 max-w-sm text-center text-[15px] leading-snug lg:text-left" aria-live="polite">
+                        <template v-if="top">
+                            Titik temu ketiganya: <strong>{{ top.name }}</strong
+                            >, kecocokan {{ top.pct }}%.
                         </template>
-                    </nav>
-                </header>
+                        <template v-else>Pilih beberapa ciri di bawah untuk melihat titik temunya.</template>
+                    </p>
+                </div>
 
-                <main class="mt-6">
-                    <div class="grid gap-6 lg:grid-cols-2 lg:gap-8">
-                        <a
-                            href="https://laravel.com/docs"
-                            id="docs-card"
-                            class="flex flex-col items-start gap-6 overflow-hidden rounded-lg bg-white p-6 shadow-[0px_14px_34px_0px_rgba(0,0,0,0.08)] ring-1 ring-white/[0.05] transition duration-300 hover:text-black/70 hover:ring-black/20 focus:outline-none focus-visible:ring-[#FF2D20] md:row-span-3 lg:p-10 lg:pb-10 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:text-white/70 dark:hover:ring-zinc-700 dark:focus-visible:ring-[#FF2D20]"
-                        >
-                            <div
-                                id="screenshot-container"
-                                class="relative flex w-full flex-1 items-stretch"
-                            >
-                                <img
-                                    src="https://laravel.com/assets/img/welcome/docs-light.svg"
-                                    alt="Laravel documentation screenshot"
-                                    class="aspect-video h-full w-full flex-1 rounded-[10px] object-cover object-top drop-shadow-[0px_4px_34px_rgba(0,0,0,0.06)] dark:hidden"
-                                    @error="handleImageError"
-                                />
-                                <img
-                                    src="https://laravel.com/assets/img/welcome/docs-dark.svg"
-                                    alt="Laravel documentation screenshot"
-                                    class="hidden aspect-video h-full w-full flex-1 rounded-[10px] object-cover object-top drop-shadow-[0px_4px_34px_rgba(0,0,0,0.25)] dark:block"
-                                />
-                                <div
-                                    class="absolute -bottom-16 -left-16 h-40 w-[calc(100%+8rem)] bg-gradient-to-b from-transparent via-white to-white dark:via-zinc-900 dark:to-zinc-900"
-                                ></div>
-                            </div>
+                <!-- pilihan ciri -->
+                <div class="lg:col-span-7 lg:col-start-6 lg:row-start-2">
+                    <h2 class="display text-2xl font-bold">Coba dulu. Pilih yang paling kamu banget.</h2>
 
-                            <div
-                                class="relative flex items-center gap-6 lg:items-end"
-                            >
-                                <div
-                                    id="docs-card-content"
-                                    class="flex items-start gap-6 lg:flex-col"
+                    <div class="mt-5 space-y-5">
+                        <div v-for="g in groups" :key="g.key">
+                            <p class="mb-2 flex items-center gap-2 text-sm font-bold">
+                                <span class="dot" :style="{ background: g.color }"></span>
+                                {{ g.label }}
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="t in g.tags"
+                                    :key="t.id"
+                                    type="button"
+                                    class="chip"
+                                    :class="{ 'is-on': picked.includes(t.id) }"
+                                    :style="{ '--c': g.color }"
+                                    :aria-pressed="picked.includes(t.id)"
+                                    @click="toggle(t.id)"
                                 >
-                                    <div
-                                        class="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#FF2D20]/10 sm:size-16"
-                                    >
-                                        <svg
-                                            class="size-5 sm:size-6"
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            fill="none"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                fill="#FF2D20"
-                                                d="M23 4a1 1 0 0 0-1.447-.894L12.224 7.77a.5.5 0 0 1-.448 0L2.447 3.106A1 1 0 0 0 1 4v13.382a1.99 1.99 0 0 0 1.105 1.79l9.448 4.728c.14.065.293.1.447.1.154-.005.306-.04.447-.105l9.453-4.724a1.99 1.99 0 0 0 1.1-1.789V4ZM3 6.023a.25.25 0 0 1 .362-.223l7.5 3.75a.251.251 0 0 1 .138.223v11.2a.25.25 0 0 1-.362.224l-7.5-3.75a.25.25 0 0 1-.138-.22V6.023Zm18 11.2a.25.25 0 0 1-.138.224l-7.5 3.75a.249.249 0 0 1-.329-.099.249.249 0 0 1-.033-.12V9.772a.251.251 0 0 1 .138-.224l7.5-3.75a.25.25 0 0 1 .362.224v11.2Z"
-                                            />
-                                            <path
-                                                fill="#FF2D20"
-                                                d="m3.55 1.893 8 4.048a1.008 1.008 0 0 0 .9 0l8-4.048a1 1 0 0 0-.9-1.785l-7.322 3.706a.506.506 0 0 1-.452 0L4.454.108a1 1 0 0 0-.9 1.785H3.55Z"
-                                            />
-                                        </svg>
-                                    </div>
-
-                                    <div class="pt-3 sm:pt-5 lg:pt-0">
-                                        <h2
-                                            class="text-xl font-semibold text-black dark:text-white"
-                                        >
-                                            Documentation
-                                        </h2>
-
-                                        <p class="mt-4 text-sm/relaxed">
-                                            Laravel has wonderful documentation
-                                            covering every aspect of the
-                                            framework. Whether you are a
-                                            newcomer or have prior experience
-                                            with Laravel, we recommend reading
-                                            our documentation from beginning to
-                                            end.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <svg
-                                    class="size-6 shrink-0 stroke-[#FF2D20]"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke-width="1.5"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"
-                                    />
-                                </svg>
-                            </div>
-                        </a>
-
-                        <a
-                            href="https://laracasts.com"
-                            class="flex items-start gap-4 rounded-lg bg-white p-6 shadow-[0px_14px_34px_0px_rgba(0,0,0,0.08)] ring-1 ring-white/[0.05] transition duration-300 hover:text-black/70 hover:ring-black/20 focus:outline-none focus-visible:ring-[#FF2D20] lg:pb-10 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:text-white/70 dark:hover:ring-zinc-700 dark:focus-visible:ring-[#FF2D20]"
-                        >
-                            <div
-                                class="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#FF2D20]/10 sm:size-16"
-                            >
-                                <svg
-                                    class="size-5 sm:size-6"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <g fill="#FF2D20">
-                                        <path
-                                            d="M24 8.25a.5.5 0 0 0-.5-.5H.5a.5.5 0 0 0-.5.5v12a2.5 2.5 0 0 0 2.5 2.5h19a2.5 2.5 0 0 0 2.5-2.5v-12Zm-7.765 5.868a1.221 1.221 0 0 1 0 2.264l-6.626 2.776A1.153 1.153 0 0 1 8 18.123v-5.746a1.151 1.151 0 0 1 1.609-1.035l6.626 2.776ZM19.564 1.677a.25.25 0 0 0-.177-.427H15.6a.106.106 0 0 0-.072.03l-4.54 4.543a.25.25 0 0 0 .177.427h3.783c.027 0 .054-.01.073-.03l4.543-4.543ZM22.071 1.318a.047.047 0 0 0-.045.013l-4.492 4.492a.249.249 0 0 0 .038.385.25.25 0 0 0 .14.042h5.784a.5.5 0 0 0 .5-.5v-2a2.5 2.5 0 0 0-1.925-2.432ZM13.014 1.677a.25.25 0 0 0-.178-.427H9.101a.106.106 0 0 0-.073.03l-4.54 4.543a.25.25 0 0 0 .177.427H8.4a.106.106 0 0 0 .073-.03l4.54-4.543ZM6.513 1.677a.25.25 0 0 0-.177-.427H2.5A2.5 2.5 0 0 0 0 3.75v2a.5.5 0 0 0 .5.5h1.4a.106.106 0 0 0 .073-.03l4.54-4.543Z"
-                                        />
-                                    </g>
-                                </svg>
-                            </div>
-
-                            <div class="pt-3 sm:pt-5">
-                                <h2
-                                    class="text-xl font-semibold text-black dark:text-white"
-                                >
-                                    Laracasts
-                                </h2>
-
-                                <p class="mt-4 text-sm/relaxed">
-                                    Laracasts offers thousands of video
-                                    tutorials on Laravel, PHP, and JavaScript
-                                    development. Check them out, see for
-                                    yourself, and massively level up your
-                                    development skills in the process.
-                                </p>
-                            </div>
-
-                            <svg
-                                class="size-6 shrink-0 self-center stroke-[#FF2D20]"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke-width="1.5"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"
-                                />
-                            </svg>
-                        </a>
-
-                        <a
-                            href="https://laravel-news.com"
-                            class="flex items-start gap-4 rounded-lg bg-white p-6 shadow-[0px_14px_34px_0px_rgba(0,0,0,0.08)] ring-1 ring-white/[0.05] transition duration-300 hover:text-black/70 hover:ring-black/20 focus:outline-none focus-visible:ring-[#FF2D20] lg:pb-10 dark:bg-zinc-900 dark:ring-zinc-800 dark:hover:text-white/70 dark:hover:ring-zinc-700 dark:focus-visible:ring-[#FF2D20]"
-                        >
-                            <div
-                                class="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#FF2D20]/10 sm:size-16"
-                            >
-                                <svg
-                                    class="size-5 sm:size-6"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <g fill="#FF2D20">
-                                        <path
-                                            d="M8.75 4.5H5.5c-.69 0-1.25.56-1.25 1.25v4.75c0 .69.56 1.25 1.25 1.25h3.25c.69 0 1.25-.56 1.25-1.25V5.75c0-.69-.56-1.25-1.25-1.25Z"
-                                        />
-                                        <path
-                                            d="M24 10a3 3 0 0 0-3-3h-2V2.5a2 2 0 0 0-2-2H2a2 2 0 0 0-2 2V20a3.5 3.5 0 0 0 3.5 3.5h17A3.5 3.5 0 0 0 24 20V10ZM3.5 21.5A1.5 1.5 0 0 1 2 20V3a.5.5 0 0 1 .5-.5h14a.5.5 0 0 1 .5.5v17c0 .295.037.588.11.874a.5.5 0 0 1-.484.625L3.5 21.5ZM22 20a1.5 1.5 0 1 1-3 0V9.5a.5.5 0 0 1 .5-.5H21a1 1 0 0 1 1 1v10Z"
-                                        />
-                                        <path
-                                            d="M12.751 6.047h2a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-.75.75h-2A.75.75 0 0 1 12 7.3v-.5a.75.75 0 0 1 .751-.753ZM12.751 10.047h2a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-.75.75h-2A.75.75 0 0 1 12 11.3v-.5a.75.75 0 0 1 .751-.753ZM4.751 14.047h10a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-.75.75h-10A.75.75 0 0 1 4 15.3v-.5a.75.75 0 0 1 .751-.753ZM4.75 18.047h7.5a.75.75 0 0 1 .75.75v.5a.75.75 0 0 1-.75.75h-7.5A.75.75 0 0 1 4 19.3v-.5a.75.75 0 0 1 .75-.753Z"
-                                        />
-                                    </g>
-                                </svg>
-                            </div>
-
-                            <div class="pt-3 sm:pt-5">
-                                <h2
-                                    class="text-xl font-semibold text-black dark:text-white"
-                                >
-                                    Laravel News
-                                </h2>
-
-                                <p class="mt-4 text-sm/relaxed">
-                                    Laravel News is a community driven portal
-                                    and newsletter aggregating all of the latest
-                                    and most important news in the Laravel
-                                    ecosystem, including new package releases
-                                    and tutorials.
-                                </p>
-                            </div>
-
-                            <svg
-                                class="size-6 shrink-0 self-center stroke-[#FF2D20]"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke-width="1.5"
-                            >
-                                <path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75"
-                                />
-                            </svg>
-                        </a>
-
-                        <div
-                            class="flex items-start gap-4 rounded-lg bg-white p-6 shadow-[0px_14px_34px_0px_rgba(0,0,0,0.08)] ring-1 ring-white/[0.05] lg:pb-10 dark:bg-zinc-900 dark:ring-zinc-800"
-                        >
-                            <div
-                                class="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#FF2D20]/10 sm:size-16"
-                            >
-                                <svg
-                                    class="size-5 sm:size-6"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <g fill="#FF2D20">
-                                        <path
-                                            d="M16.597 12.635a.247.247 0 0 0-.08-.237 2.234 2.234 0 0 1-.769-1.68c.001-.195.03-.39.084-.578a.25.25 0 0 0-.09-.267 8.8 8.8 0 0 0-4.826-1.66.25.25 0 0 0-.268.181 2.5 2.5 0 0 1-2.4 1.824.045.045 0 0 0-.045.037 12.255 12.255 0 0 0-.093 3.86.251.251 0 0 0 .208.214c2.22.366 4.367 1.08 6.362 2.118a.252.252 0 0 0 .32-.079 10.09 10.09 0 0 0 1.597-3.733ZM13.616 17.968a.25.25 0 0 0-.063-.407A19.697 19.697 0 0 0 8.91 15.98a.25.25 0 0 0-.287.325c.151.455.334.898.548 1.328.437.827.981 1.594 1.619 2.28a.249.249 0 0 0 .32.044 29.13 29.13 0 0 0 2.506-1.99ZM6.303 14.105a.25.25 0 0 0 .265-.274 13.048 13.048 0 0 1 .205-4.045.062.062 0 0 0-.022-.07 2.5 2.5 0 0 1-.777-.982.25.25 0 0 0-.271-.149 11 11 0 0 0-5.6 2.815.255.255 0 0 0-.075.163c-.008.135-.02.27-.02.406.002.8.084 1.598.246 2.381a.25.25 0 0 0 .303.193 19.924 19.924 0 0 1 5.746-.438ZM9.228 20.914a.25.25 0 0 0 .1-.393 11.53 11.53 0 0 1-1.5-2.22 12.238 12.238 0 0 1-.91-2.465.248.248 0 0 0-.22-.187 18.876 18.876 0 0 0-5.69.33.249.249 0 0 0-.179.336c.838 2.142 2.272 4 4.132 5.353a.254.254 0 0 0 .15.048c1.41-.01 2.807-.282 4.117-.802ZM18.93 12.957l-.005-.008a.25.25 0 0 0-.268-.082 2.21 2.21 0 0 1-.41.081.25.25 0 0 0-.217.2c-.582 2.66-2.127 5.35-5.75 7.843a.248.248 0 0 0-.09.299.25.25 0 0 0 .065.091 28.703 28.703 0 0 0 2.662 2.12.246.246 0 0 0 .209.037c2.579-.701 4.85-2.242 6.456-4.378a.25.25 0 0 0 .048-.189 13.51 13.51 0 0 0-2.7-6.014ZM5.702 7.058a.254.254 0 0 0 .2-.165A2.488 2.488 0 0 1 7.98 5.245a.093.093 0 0 0 .078-.062 19.734 19.734 0 0 1 3.055-4.74.25.25 0 0 0-.21-.41 12.009 12.009 0 0 0-10.4 8.558.25.25 0 0 0 .373.281 12.912 12.912 0 0 1 4.826-1.814ZM10.773 22.052a.25.25 0 0 0-.28-.046c-.758.356-1.55.635-2.365.833a.25.25 0 0 0-.022.48c1.252.43 2.568.65 3.893.65.1 0 .2 0 .3-.008a.25.25 0 0 0 .147-.444c-.526-.424-1.1-.917-1.673-1.465ZM18.744 8.436a.249.249 0 0 0 .15.228 2.246 2.246 0 0 1 1.352 2.054c0 .337-.08.67-.23.972a.25.25 0 0 0 .042.28l.007.009a15.016 15.016 0 0 1 2.52 4.6.25.25 0 0 0 .37.132.25.25 0 0 0 .096-.114c.623-1.464.944-3.039.945-4.63a12.005 12.005 0 0 0-5.78-10.258.25.25 0 0 0-.373.274c.547 2.109.85 4.274.901 6.453ZM9.61 5.38a.25.25 0 0 0 .08.31c.34.24.616.561.8.935a.25.25 0 0 0 .3.127.631.631 0 0 1 .206-.034c2.054.078 4.036.772 5.69 1.991a.251.251 0 0 0 .267.024c.046-.024.093-.047.141-.067a.25.25 0 0 0 .151-.23A29.98 29.98 0 0 0 15.957.764a.25.25 0 0 0-.16-.164 11.924 11.924 0 0 0-2.21-.518.252.252 0 0 0-.215.076A22.456 22.456 0 0 0 9.61 5.38Z"
-                                        />
-                                    </g>
-                                </svg>
-                            </div>
-
-                            <div class="pt-3 sm:pt-5">
-                                <h2
-                                    class="text-xl font-semibold text-black dark:text-white"
-                                >
-                                    Vibrant Ecosystem
-                                </h2>
-
-                                <p class="mt-4 text-sm/relaxed">
-                                    Laravel's robust library of first-party
-                                    tools and libraries, such as
-                                    <a
-                                        href="https://forge.laravel.com"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white dark:focus-visible:ring-[#FF2D20]"
-                                        >Forge</a
-                                    >,
-                                    <a
-                                        href="https://vapor.laravel.com"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Vapor</a
-                                    >,
-                                    <a
-                                        href="https://nova.laravel.com"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Nova</a
-                                    >,
-                                    <a
-                                        href="https://envoyer.io"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Envoyer</a
-                                    >, and
-                                    <a
-                                        href="https://herd.laravel.com"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Herd</a
-                                    >
-                                    help you take your projects to the next
-                                    level. Pair them with powerful open source
-                                    libraries like
-                                    <a
-                                        href="https://laravel.com/docs/billing"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Cashier</a
-                                    >,
-                                    <a
-                                        href="https://laravel.com/docs/dusk"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Dusk</a
-                                    >,
-                                    <a
-                                        href="https://laravel.com/docs/broadcasting"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Echo</a
-                                    >,
-                                    <a
-                                        href="https://laravel.com/docs/horizon"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Horizon</a
-                                    >,
-                                    <a
-                                        href="https://laravel.com/docs/sanctum"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Sanctum</a
-                                    >,
-                                    <a
-                                        href="https://laravel.com/docs/telescope"
-                                        class="rounded-sm underline hover:text-black focus:outline-none focus-visible:ring-1 focus-visible:ring-[#FF2D20] dark:hover:text-white"
-                                        >Telescope</a
-                                    >, and more.
-                                </p>
+                                    {{ t.label }}
+                                </button>
                             </div>
                         </div>
                     </div>
-                </main>
+                </div>
 
-                <footer
-                    class="py-16 text-center text-sm text-black dark:text-white/70"
-                >
-                    Laravel v{{ laravelVersion }} (PHP v{{ phpVersion }})
-                </footer>
+                <!-- hasil sementara -->
+                <div class="lg:col-span-5 lg:col-start-1 lg:row-start-2">
+                    <h2 class="display text-2xl font-bold">Pilihan yang paling cocok sejauh ini</h2>
+
+                    <TransitionGroup tag="ul" name="rank" class="mt-5 space-y-3.5">
+                        <li v-for="c in ranked" :key="c.name">
+                            <div class="mb-1.5 flex items-baseline justify-between gap-3 text-sm font-semibold">
+                                <span>{{ c.name }}</span>
+                                <span class="tabular-nums">{{ c.pct }}%</span>
+                            </div>
+                            <div class="track">
+                                <div class="fill" :style="{ width: c.pct + '%', background: c.color }"></div>
+                            </div>
+                        </li>
+                    </TransitionGroup>
+
+                    <p class="muted mt-5 max-w-sm text-xs leading-relaxed">
+                        Ini simulasi singkat. Tes yang sebenarnya memakai lebih banyak pertanyaan dan pembobotan yang
+                        lebih rinci.
+                    </p>
+                </div>
+            </section>
+
+            <!-- ================= TIGA HAL ================= -->
+            <section id="tiga-hal" class="wrap scroll-mt-16 pb-24 pt-4">
+                <h2 class="display max-w-xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+                    Tiga hal yang kami baca dari dirimu
+                </h2>
+                <p class="muted mt-4 max-w-lg text-lg leading-relaxed">
+                    Satu saja tidak cukup. Minat tanpa bakat cepat bosan, bakat tanpa minat cepat lelah. Karena itu
+                    ketiganya dilihat bersama.
+                </p>
+
+                <div class="mt-12">
+                    <article
+                        v-for="(p, i) in pillars"
+                        :key="p.title"
+                        class="pillar grid items-center gap-x-8 gap-y-4 py-10 md:grid-cols-12"
+                    >
+                        <div class="flex items-center gap-5 md:col-span-4">
+                            <!-- saat efek scroll aktif, lingkaran ini "berangkat" dan menyisakan cincin -->
+                            <span
+                                :ref="(el) => (dots[i] = el)"
+                                class="big-dot"
+                                :class="{ 'is-ring': fly }"
+                                :style="{ '--c': p.color, background: fly ? 'transparent' : p.color }"
+                                aria-hidden="true"
+                            ></span>
+                            <h3 class="display text-4xl font-extrabold sm:text-5xl">{{ p.title }}</h3>
+                        </div>
+                        <p class="muted text-[17px] leading-relaxed md:col-span-3">{{ p.text }}</p>
+                        <p class="display text-2xl font-bold leading-snug md:col-span-5">&ldquo;{{ p.q }}&rdquo;</p>
+                    </article>
+                </div>
+            </section>
+
+            <!-- ================= CARA KERJA ================= -->
+            <section id="cara-kerja" class="wrap scroll-mt-16 pb-24">
+                <div class="grid gap-14 lg:grid-cols-12">
+                    <div class="lg:col-span-5">
+                        <h2 class="display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+                            Dari jawabanmu jadi urutan rekomendasi
+                        </h2>
+                        <p class="muted mt-4 max-w-md text-lg leading-relaxed">
+                            Kenali memakai sistem pendukung keputusan (SPK). Hasilnya bukan tebakan, tapi perhitungan
+                            yang bisa ditelusuri.
+                        </p>
+
+                        <p class="display mt-8 text-2xl font-bold">
+                            <span class="mark">Skor pilihan = &Sigma; (nilai &times; bobot)</span>
+                        </p>
+                        <p class="muted mt-3 max-w-md leading-relaxed">
+                            Kriteria yang lebih penting punya bobot lebih besar, jadi pengaruhnya ke hasil juga lebih
+                            besar.
+                        </p>
+
+                        <!-- tempat tiga lingkaran bertemu -->
+                        <div class="mt-10 max-w-[320px]">
+                            <div ref="vennSlot" class="aspect-[5/4] w-full">
+                                <svg v-if="!fly" viewBox="0 40 400 320" class="block h-full w-full" aria-hidden="true">
+                                    <g style="isolation: isolate">
+                                        <circle class="static-orb" cx="155" cy="165" r="72" fill="#9277FF" />
+                                        <circle class="static-orb" cx="245" cy="165" r="72" fill="#FF5C93" />
+                                        <circle class="static-orb" cx="200" cy="240" r="72" fill="#4DB0FF" />
+                                    </g>
+                                    <circle cx="200" cy="190" r="4" fill="#0D1130" />
+                                </svg>
+                            </div>
+                            <p class="muted mt-3 text-sm">Tiga hal tadi bertemu di hasilmu.</p>
+                        </div>
+                    </div>
+
+                    <ol class="lg:col-span-7">
+                        <li v-for="(s, i) in steps" :key="s.title" class="step flex gap-6 py-8">
+                            <span class="num" :style="{ background: s.color }">{{ i + 1 }}</span>
+                            <div class="pt-1">
+                                <h3 class="display text-2xl font-bold">{{ s.title }}</h3>
+                                <p class="muted mt-1 max-w-md leading-relaxed">{{ s.text }}</p>
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+            </section>
+
+            <!-- ================= CTA ================= -->
+            <section class="wrap pb-20">
+                <div ref="ctaPanel" class="cta relative overflow-hidden px-8 py-16 sm:px-14 sm:py-20">
+                    <svg
+                        class="pointer-events-none absolute -right-16 top-1/2 hidden -translate-y-1/2 overflow-visible md:block"
+                        width="420"
+                        height="400"
+                        viewBox="0 0 400 380"
+                        aria-hidden="true"
+                    >
+                        <g style="isolation: isolate">
+                            <circle
+                                v-for="(o, i) in orbs"
+                                :key="o.key"
+                                :ref="(el) => (ctaOrbs[i] = el)"
+                                class="screen"
+                                :cx="o.x"
+                                :cy="o.y"
+                                r="100"
+                                :fill="o.color"
+                            />
+                        </g>
+                    </svg>
+
+                    <div class="relative max-w-lg">
+                        <h2 class="display text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+                            Mulai dari satu pertanyaan.
+                        </h2>
+                        <p class="muted mt-3 text-lg">Daftar, jawab pertanyaannya, lalu baca hasilnya.</p>
+
+                        <div class="mt-8">
+                            <Link v-if="$page.props.auth.user" :href="route('dashboard')" class="btn btn-violet">
+                                Lanjut ke dashboard
+                            </Link>
+                            <Link v-else-if="canRegister" :href="route('register')" class="btn btn-violet">
+                                Mulai tes
+                            </Link>
+                            <Link v-else-if="canLogin" :href="route('login')" class="btn btn-violet">
+                                Masuk untuk mulai
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            <div class="wrap muted flex flex-col gap-2 py-6 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <p>&copy; {{ year }} Kenali. Kenali dirimu, temukan arahmu.</p>
+                <p v-if="laravelVersion">Laravel v{{ laravelVersion }} (PHP v{{ phpVersion }})</p>
             </div>
-        </div>
+        </footer>
     </div>
 </template>
+
+<style>
+html {
+    scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+}
+</style>
+
+<style scoped>
+/* ------------------------------------------------------------
+ | Palet: cukup ubah variabel di sini untuk mengganti seluruh warna.
+ ------------------------------------------------------------ */
+.kenali {
+    --bg: #0d1130; /* malam indigo */
+    --panel: #181d4d;
+    --fg: #eef0ff;
+    --on: #0d1130; /* teks di atas warna terang */
+    --muted: rgb(238 240 255 / 0.72);
+    --line: rgb(238 240 255 / 0.14);
+
+    --violet: #9277ff;
+    --rose: #ff5c93;
+    --sky: #4db0ff;
+
+    font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+
+    /* "clip" (bukan "hidden") supaya navbar sticky tetap berfungsi */
+    overflow-x: clip;
+}
+
+.display {
+    font-family: 'Bricolage Grotesque', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+}
+.muted {
+    color: var(--muted);
+}
+
+/* satu lebar container untuk semua bagian, di layar sebesar apa pun */
+.wrap {
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+}
+
+/* konten berada di atas lapisan lingkaran yang bergerak */
+main {
+    position: relative;
+    z-index: 1;
+}
+
+/* keyboard focus selalu terlihat */
+.kenali :focus-visible {
+    outline: 3px solid var(--fg);
+    outline-offset: 3px;
+    border-radius: 6px;
+}
+
+/* ---------- navbar & footer ---------- */
+.site-header {
+    background: rgb(13 17 48 / 0.8);
+    border-bottom: 1px solid var(--line);
+}
+.site-footer {
+    border-top: 1px solid var(--line);
+}
+.nav-link {
+    background: linear-gradient(var(--violet), var(--violet)) no-repeat 0 100% / 0 0.3em;
+    transition: background-size 0.2s ease;
+}
+.nav-link:hover {
+    background-size: 100% 0.3em;
+}
+
+/* ---------- tombol ---------- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.85rem 1.7rem;
+    font-weight: 700;
+    color: var(--on);
+    background: var(--fg);
+    border-radius: 999px;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.btn:hover {
+    background: #fff;
+    transform: translateY(-2px);
+}
+.btn:active {
+    transform: translateY(0);
+}
+.btn-sm {
+    padding: 0.5rem 1.15rem;
+    font-size: 0.9rem;
+}
+.btn-violet {
+    background: var(--violet);
+}
+.btn-violet:hover {
+    background: #a891ff;
+}
+
+/* ---------- Venn: cahaya bercampur ---------- */
+.layer {
+    mix-blend-mode: screen; /* cahaya antar-lapisan bercampur */
+}
+.screen {
+    mix-blend-mode: screen;
+}
+.enter {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: enter 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: var(--d, 0ms);
+}
+@keyframes enter {
+    from {
+        opacity: 0;
+        transform: scale(0.4);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+.orb {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 0.6s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.static-orb {
+    mix-blend-mode: screen;
+}
+
+/* ---------- lapisan lingkaran yang bergerak saat scroll ---------- */
+.fly-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.fly-orb {
+    mix-blend-mode: screen;
+}
+
+/* ---------- chip pilihan ---------- */
+.dot {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+}
+.chip {
+    padding: 0.45rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--fg);
+    background: rgb(255 255 255 / 0.08);
+    border-radius: 999px;
+    transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+.chip:hover {
+    background: rgb(255 255 255 / 0.15);
+    transform: translateY(-1px);
+}
+.chip.is-on {
+    color: var(--on);
+    background: var(--c);
+    font-weight: 700;
+}
+
+/* ---------- bar hasil ---------- */
+.track {
+    height: 8px;
+    background: rgb(255 255 255 / 0.12);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rank-move {
+    transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------- tiga hal ---------- */
+.pillar {
+    border-top: 1px solid var(--line);
+}
+.pillar:last-child {
+    border-bottom: 1px solid var(--line);
+}
+.big-dot {
+    flex: none;
+    width: 3.25rem;
+    height: 3.25rem;
+    border-radius: 50%;
+}
+.big-dot.is-ring {
+    box-shadow: inset 0 0 0 2px var(--c);
+}
+
+/* ---------- cara kerja ---------- */
+.mark {
+    padding: 0 0.15em;
+    background: linear-gradient(transparent 68%, rgb(146 119 255 / 0.6) 68%);
+}
+.step {
+    border-top: 1px solid var(--line);
+}
+.step:first-child {
+    border-top: 0;
+    padding-top: 0.25rem;
+}
+.num {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    font-weight: 800;
+    color: var(--on);
+    border-radius: 50%;
+}
+
+/* ---------- CTA ---------- */
+.cta {
+    background: var(--panel);
+    border-radius: 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .enter {
+        animation: none;
+    }
+    .btn,
+    .chip,
+    .orb,
+    .fill,
+    .rank-move,
+    .nav-link {
+        transition: none;
+    }
+}
+</style>

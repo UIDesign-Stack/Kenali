@@ -10,6 +10,8 @@ use App\Http\Requests\SendConsultationMessageRequest;
 use App\Http\Requests\StoreConsultationRequest;
 use App\Models\Consultation;
 use App\Models\PsychologistProfile;
+use App\Notifications\ConsultationStatusUpdated;
+use App\Notifications\NewConsultationMessage;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -59,10 +61,15 @@ class ConsultationController extends Controller
 
     public function store(StoreConsultationRequest $request)
     {
-        $request->user()->consultations()->create([
+        $consultation = $request->user()->consultations()->create([
             ...$request->validated(),
             'status' => ConsultationStatus::Pending->value,
         ]);
+
+        $consultation->load('psychologistProfile.user');
+        $consultation->psychologistProfile->user->notify(
+            new ConsultationStatusUpdated($consultation, 'requested')
+        );
 
         return redirect()->route('consultations.index')
             ->with('success', 'Permintaan konsultasi berhasil diajukan. Menunggu respon psikolog.');
@@ -78,6 +85,7 @@ class ConsultationController extends Controller
             'consultation' => $consultation,
         ]);
     }
+
     public function sendMessage(SendConsultationMessageRequest $request, Consultation $consultation)
     {
         abort_if(
@@ -95,6 +103,8 @@ class ConsultationController extends Controller
         $message->load('sender:id,name');
 
         broadcast(new ConsultationMessageSent($message))->toOthers();
+        $consultation->loadMissing('psychologistProfile.user');
+        $consultation->psychologistProfile->user->notify(new NewConsultationMessage($message));
 
         return response()->json(['data' => $message]);
     }

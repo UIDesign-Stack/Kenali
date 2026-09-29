@@ -26,9 +26,6 @@ const typeLabel = {
     tatap_muka: 'Tatap Muka Langsung',
 };
 
-// Field terpisah untuk catatan lokasi yang diketik psikolog -- TIDAK
-// langsung dikirim sebagai `notes` mentah, supaya tidak menimpa catatan
-// asli klien (lihat acceptAndSchedule()).
 const locationNote = ref('');
 
 const scheduleForm = useForm({
@@ -109,11 +106,15 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    if (props.consultation.status !== 'scheduled') return;
-
+    // PENTING: subscribe channel SELALU, tidak peduli status saat ini --
+    // supaya psikolog juga bisa "dengar" kalau admin force-cancel konsultasi
+    // yang masih 'pending' (sebelum sempat diterima/dijadwalkan).
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
+        .listen('.status.changed', () => {
+            router.reload({ only: ['consultation'], preserveScroll: true });
+        })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
         })
@@ -135,10 +136,6 @@ function acceptAndSchedule() {
     actionError.value = null;
     scheduleForm.status = 'scheduled';
 
-    // Cuma sertakan `notes` di payload KALAU psikolog benar-benar mengisi
-    // catatan lokasi, dan gabungkan (bukan timpa) dengan catatan asli
-    // klien -- sebelumnya field notes selalu terkirim (walau kosong),
-    // menimpa/menghapus catatan asli klien setiap kali konsultasi diterima.
     const extra = {};
     if (locationNote.value.trim()) {
         extra.notes = [props.consultation.notes, `[Psikolog] ${locationNote.value.trim()}`]

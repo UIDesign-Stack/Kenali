@@ -1,6 +1,6 @@
 <script setup>
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { Link, Head, usePage } from '@inertiajs/vue3';
+import { router, Link, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const page = usePage();
@@ -45,21 +45,14 @@ function scrollToBottom() {
 }
 
 function pushIfNew(message) {
-    // Dedupe: kalau pesan ini sudah ada (misal dari respons kirim sendiri),
-    // jangan dobel-tambahkan saat broadcast realtime juga datang.
     if (!messages.value.some((m) => m.id === message.id)) {
         messages.value.push(message);
         scrollToBottom();
     }
-    // Pesan sungguhan masuk -- indikator "sedang menulis" jadi tidak relevan lagi.
     otherPartyTyping.value = false;
     clearTimeout(typingHideTimeout);
 }
 
-// Dipanggil tiap kali user mengetik di kotak pesan. Di-throttle supaya
-// tidak mengirim whisper di setiap keystroke (client events punya rate
-// limit di sisi server) -- cukup kirim maksimal sekali tiap 2 detik
-// selama user aktif mengetik.
 function handleTyping() {
     if (!echoChannel || props.consultation.status !== 'scheduled') return;
 
@@ -95,7 +88,6 @@ async function sendMessage() {
             return;
         }
 
-        // res tidak ok -- tampilkan pesan errornya, jangan diam saja.
         const errorData = await res.json().catch(() => null);
         sendError.value = errorData?.message
             ?? errorData?.errors?.message?.[0]
@@ -113,19 +105,22 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    if (props.consultation.status !== 'scheduled') return;
-
+    // PENTING: subscribe channel SELALU, tidak peduli status saat ini.
+    // Kalau digerbang di belakang "status === scheduled" saja, transisi
+    // pending -> scheduled justru tidak akan pernah "didengar" -- padahal
+    // itu momen paling penting yang perlu diketahui user secara realtime.
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
+        .listen('.status.changed', () => {
+            router.reload({ only: ['consultation'], preserveScroll: true });
+        })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
         })
         .listenForWhisper('typing', () => {
             otherPartyTyping.value = true;
             clearTimeout(typingHideTimeout);
-            // Sembunyikan lagi kalau tidak ada whisper baru dalam 3 detik
-            // (nandain lawan bicara berhenti mengetik / diam).
             typingHideTimeout = setTimeout(() => {
                 otherPartyTyping.value = false;
             }, 3000);
@@ -166,7 +161,7 @@ onBeforeUnmount(() => {
                 catatan psikolog atau tanyakan lewat chat.
             </div>
 
-            <div v-if="consultation.notes" class="mb-4 p-3 rounded-md bg-gray-50 text-sm text-gray-600">
+            <div v-if="consultation.notes" class="mb-4 p-3 rounded-md bg-gray-50 text-sm text-gray-600 whitespace-pre-line">
                 "{{ consultation.notes }}"
             </div>
 
@@ -204,8 +199,6 @@ onBeforeUnmount(() => {
                     {{ consultation.psychologist_profile.user.name }} sedang menulis…
                 </p>
 
-                <!-- Samakan persis dengan backend (sendMessage() cuma izinkan
-                     status 'scheduled'), bukan sekadar "bukan completed/cancelled". -->
                 <div v-if="consultation.status === 'scheduled'" class="flex gap-2">
                     <input
                         v-model="newMessage"

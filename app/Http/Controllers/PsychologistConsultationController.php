@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Enums\ConsultationStatus;
 use App\Events\ConsultationMessageSent;
+use App\Events\ConsultationStatusChanged;
 use App\Http\Requests\SendPsychologistMessageRequest;
 use App\Http\Requests\UpdateConsultationStatusRequest;
 use App\Models\Consultation;
+use App\Notifications\ConsultationStatusUpdated;
+use App\Notifications\NewConsultationMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -47,7 +50,7 @@ class PsychologistConsultationController extends Controller
     {
         $validated = $request->validated();
 
-        DB::transaction(function () use ($validated, $consultation) {
+        $context = DB::transaction(function () use ($validated, $consultation) {
 
             $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->first();
 
@@ -64,8 +67,29 @@ class PsychologistConsultationController extends Controller
                 'Konsultasi harus dijadwalkan (scheduled) dulu sebelum bisa ditandai selesai.'
             );
 
+            $previousStatus = $locked->status;
+
             $locked->update($validated);
+
+            return match (true) {
+                $validated['status'] === ConsultationStatus::Scheduled->value => 'scheduled',
+                $previousStatus === ConsultationStatus::Pending->value
+                    && $validated['status'] === ConsultationStatus::Cancelled->value => 'rejected',
+                $previousStatus === ConsultationStatus::Scheduled->value
+                    && $validated['status'] === ConsultationStatus::Cancelled->value => 'cancelled_after_scheduled',
+                $validated['status'] === ConsultationStatus::Completed->value => 'completed',
+                default => null,
+            };
         });
+
+        $consultation->refresh();
+
+        if ($context) {
+            $consultation->loadMissing('user');
+            $consultation->user->notify(new ConsultationStatusUpdated($consultation, $context));
+        }
+
+        broadcast(new ConsultationStatusChanged($consultation));
 
         return back()->with('success', 'Status konsultasi diperbarui.');
     }
@@ -87,6 +111,9 @@ class PsychologistConsultationController extends Controller
         $message->load('sender:id,name');
 
         broadcast(new ConsultationMessageSent($message))->toOthers();
+
+        $consultation->loadMissing('user');
+        $consultation->user->notify(new NewConsultationMessage($message));
 
         return response()->json(['data' => $message]);
     }

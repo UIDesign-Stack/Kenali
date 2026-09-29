@@ -3,10 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\ConsultationStatus;
+use App\Events\ConsultationStatusChanged;
 use App\Http\Controllers\Controller;
 use App\Models\Consultation;
 use App\Models\PsychologistProfile;
+use App\Notifications\ConsultationStatusUpdated;
+use App\Notifications\PsychologistVerified;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class PsychologistManagementController extends Controller
@@ -47,6 +51,10 @@ class PsychologistManagementController extends Controller
         }
 
         $psychologistProfile->update(['is_verified' => ! $psychologistProfile->is_verified]);
+
+        if ($psychologistProfile->is_verified) {
+            $psychologistProfile->user->notify(new PsychologistVerified());
+        }
 
         return back()->with('success', $psychologistProfile->is_verified
             ? "Psikolog {$name} berhasil diverifikasi."
@@ -96,20 +104,36 @@ class PsychologistManagementController extends Controller
 
     public function forceCancelConsultation(Request $request, Consultation $consultation)
     {
-        abort_if(
-            in_array($consultation->status, ConsultationStatus::terminalStatusValues()),
-            422,
-            'Konsultasi ini sudah berstatus akhir, tidak bisa dibatalkan lagi.'
-        );
-
         $validated = $request->validate([
             'cancelled_reason' => ['required', 'string', 'max:1000'],
         ]);
 
-        $consultation->update([
-            'status'           => ConsultationStatus::Cancelled->value,
-            'cancelled_reason' => '[Dibatalkan oleh admin] '.$validated['cancelled_reason'],
-        ]);
+        $wasAlreadyTerminal = DB::transaction(function () use ($consultation, $validated) {
+            $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->first();
+
+            if (in_array($locked->status, ConsultationStatus::terminalStatusValues())) {
+                return true;
+            }
+
+            $locked->update([
+                'status'           => ConsultationStatus::Cancelled->value,
+                'cancelled_reason' => '[Dibatalkan oleh admin] '.$validated['cancelled_reason'],
+            ]);
+
+            return false;
+        });
+
+        if ($wasAlreadyTerminal) {
+            return back()->withErrors([
+                'consultation' => 'Konsultasi ini sudah berstatus akhir, tidak bisa dibatalkan lagi.',
+            ]);
+        }
+
+        $consultation->refresh()->loadMissing('user', 'psychologistProfile.user');
+        $consultation->user->notify(new ConsultationStatusUpdated($consultation, 'force_cancelled'));
+        $consultation->psychologistProfile->user->notify(new ConsultationStatusUpdated($consultation, 'force_cancelled'));
+
+        broadcast(new ConsultationStatusChanged($consultation));
 
         return back()->with('success', 'Konsultasi berhasil dibatalkan oleh admin.');
     }
