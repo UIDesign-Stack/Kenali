@@ -12,6 +12,7 @@ use App\Models\Consultation;
 use App\Models\PsychologistProfile;
 use App\Notifications\ConsultationStatusUpdated;
 use App\Notifications\NewConsultationMessage;
+use App\Actions\MarkConsultationMessagesAsRead;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -75,9 +76,13 @@ class ConsultationController extends Controller
             ->with('success', 'Permintaan konsultasi berhasil diajukan. Menunggu respon psikolog.');
     }
 
-    public function show(Consultation $consultation, Request $request)
+   public function show(Consultation $consultation, Request $request, MarkConsultationMessagesAsRead $markAsRead)
     {
         $this->authorizeOwnership($consultation, $request);
+
+        if ($this->messagesVisible($consultation)) {
+            $markAsRead->handle($consultation, $request->user());
+        }
 
         $consultation->load('psychologistProfile.user:id,name', 'messages.sender:id,name');
 
@@ -88,6 +93,8 @@ class ConsultationController extends Controller
 
     public function sendMessage(SendConsultationMessageRequest $request, Consultation $consultation)
     {
+        $this->authorizeOwnership($consultation, $request);
+
         abort_if(
             $consultation->status !== ConsultationStatus::Scheduled->value,
             422,
@@ -102,15 +109,32 @@ class ConsultationController extends Controller
 
         $message->load('sender:id,name');
 
-        broadcast(new ConsultationMessageSent($message))->toOthers();
         $consultation->loadMissing('psychologistProfile.user');
         $consultation->psychologistProfile->user->notify(new NewConsultationMessage($message));
+
+        broadcast(new ConsultationMessageSent($message))->toOthers();
 
         return response()->json(['data' => $message]);
     }
 
+    public function markAsRead(Consultation $consultation, Request $request, MarkConsultationMessagesAsRead $markAsRead)
+    {
+        $this->authorizeOwnership($consultation, $request);
+        abort_unless($this->messagesVisible($consultation), 422);
+
+        $markAsRead->handle($consultation, $request->user());
+
+        return response()->json(['ok' => true]);
+    }
     private function authorizeOwnership(Consultation $consultation, Request $request): void
     {
         abort_if($consultation->user_id !== $request->user()->id, 403);
+    }
+    private function messagesVisible(Consultation $consultation): bool
+    {
+        return in_array($consultation->status, [
+            ConsultationStatus::Scheduled->value,
+            ConsultationStatus::Completed->value,
+        ], true);
     }
 }

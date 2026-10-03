@@ -46,8 +46,7 @@ const typeLabel = {
                     v-for="c in consultations"
                     :key="c.id"
                     :href="route('psikolog.consultations.show', c.id)"
-                    class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition"
-                >
+                    class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition">
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-semibold text-gray-800">{{ c.user.name }}</span>
                         <span class="text-[10px] px-2 py-0.5 rounded-full" :class="statusColor[c.status] ?? 'bg-gray-100 text-gray-500'">

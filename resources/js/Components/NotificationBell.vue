@@ -48,7 +48,9 @@ async function openNotification(notif) {
     isOpen.value = false;
 
     if (notif.data.url) {
-        router.visit(notif.data.url);
+        // Ambil path-nya saja, supaya perbedaan host/APP_URL tidak jadi masalah
+        const target = new URL(notif.data.url, window.location.origin);
+        router.visit(target.pathname + target.search);
     }
 }
 
@@ -80,19 +82,39 @@ function timeAgo(dateStr) {
     if (seconds < 86400) return Math.floor(seconds / 3600) + ' jam lalu';
     return Math.floor(seconds / 86400) + ' hari lalu';
 }
+// Apakah user sedang melihat chat konsultasi ini (tab aktif)?
+function isViewingConsultation(consultationId) {
+    if (document.visibilityState !== 'visible') return false;
+
+    const onChat = route().current('consultations.show')
+        || route().current('psikolog.consultations.show');
+    if (!onChat) return false;
+
+    return Number(route().params.consultation) === Number(consultationId);
+}
+
+// Dipanggil Show.vue setelah pesan ditandai dibaca
+const onRefresh = () => fetchNotifications();
 
 let channelName = null;
 
 onMounted(() => {
-
     fetchNotifications();
 
     document.addEventListener('click', handleClickOutside);
+    window.addEventListener('notifications:refresh', onRefresh);
 
     const userId = page.props.auth.user.id;
     channelName = `App.Models.User.${userId}`;
 
     window.Echo.private(channelName).notification((payload) => {
+        // Chat sedang dibuka: Show.vue yang menandai dibaca, badge tidak naik
+        if (payload.consultation_id && isViewingConsultation(payload.consultation_id)) {
+            return;
+        }
+
+        // Cegah duplikat
+        if (notifications.value.some((n) => n.id === payload.id)) return;
 
         notifications.value.unshift({
             id: payload.id,
@@ -111,6 +133,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     document.removeEventListener('click', handleClickOutside);
+    window.removeEventListener('notifications:refresh', onRefresh);
     if (channelName) {
         window.Echo.leave(channelName);
     }
@@ -124,16 +147,14 @@ onBeforeUnmount(() => {
             :aria-expanded="isOpen"
             aria-haspopup="true"
             aria-label="Notifikasi"
-            class="relative p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-        >
+            class="relative p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
             <span
                 v-if="unreadCount > 0"
-                class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
-            >
+                class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                 {{ unreadCount > 9 ? '9+' : unreadCount }}
             </span>
         </button>
@@ -141,15 +162,13 @@ onBeforeUnmount(() => {
         <div
             v-if="isOpen"
             role="menu"
-            class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto"
-        >
+            class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
             <div class="flex items-center justify-between px-4 py-2 border-b border-gray-100">
                 <span class="text-sm font-semibold text-gray-700">Notifikasi</span>
                 <button
                     v-if="unreadCount > 0"
                     @click="markAllRead"
-                    class="text-xs text-teal-600 hover:text-teal-800"
-                >
+                    class="text-xs text-teal-600 hover:text-teal-800">
                     Tandai semua dibaca
                 </button>
             </div>
@@ -160,8 +179,7 @@ onBeforeUnmount(() => {
                 role="menuitem"
                 @click="openNotification(notif)"
                 class="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition"
-                :class="{ 'bg-teal-50': !notif.read_at }"
-            >
+                :class="{ 'bg-teal-50': !notif.read_at }">
                 <p class="text-sm font-medium text-gray-800">{{ notif.data.title }}</p>
                 <p class="text-xs text-gray-500 mt-0.5">{{ notif.data.body }}</p>
                 <p class="text-[10px] text-gray-400 mt-1">{{ timeAgo(notif.created_at) }}</p>

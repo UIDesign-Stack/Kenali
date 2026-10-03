@@ -19,6 +19,7 @@ class ConsultationMessage extends Model
 
     protected $casts = [
         'sent_at' => 'datetime',
+        'read_at' => 'datetime',
     ];
 
     public function consultation(): BelongsTo

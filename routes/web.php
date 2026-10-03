@@ -55,6 +55,8 @@ Route::middleware(['auth', 'verified', 'role:user'])->group(function () {
     Route::post('/consultations', [ConsultationController::class, 'store'])->name('consultations.store');
     Route::get('/consultations/{consultation}', [ConsultationController::class, 'show'])->name('consultations.show');
     Route::post('/consultations/{consultation}/messages', [ConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+    Route::post('/consultations/{consultation}/read', [ConsultationController::class, 'markAsRead'])->name('consultations.read');
+
 });
 
 
@@ -63,6 +65,7 @@ Route::middleware(['auth', 'verified', 'role:psikolog'])->prefix('psikolog')->na
     Route::get('/consultations/{consultation}', [PsychologistConsultationController::class, 'show'])->name('consultations.show');
     Route::patch('/consultations/{consultation}/status', [PsychologistConsultationController::class, 'updateStatus'])->name('consultations.update-status');
     Route::post('/consultations/{consultation}/messages', [PsychologistConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+    Route::post('/consultations/{consultation}/read', [PsychologistConsultationController::class, 'markAsRead'])->name('consultations.read');
 });
 
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {

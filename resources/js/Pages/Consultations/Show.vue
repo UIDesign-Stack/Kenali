@@ -16,6 +16,9 @@ const sendError = ref(null);
 const messagesContainer = ref(null);
 const otherPartyTyping = ref(false);
 
+const myId = page.props.auth.user.id;
+let markingRead = false;
+let markAgain = false;
 let echoChannel = null;
 let typingHideTimeout = null;
 let lastWhisperAt = 0;
@@ -53,6 +56,61 @@ function pushIfNew(message) {
     clearTimeout(typingHideTimeout);
 }
 
+const isMine = (msg) => msg.sender.id === myId;
+
+function formatTime(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+const hasUnreadIncoming = () =>
+    messages.value.some((m) => !isMine(m) && !m.read_at);
+
+// Tandai pesan psikolog sudah dibaca (hanya jika tab sedang terlihat)
+async function markIncomingAsRead() {
+    if (!['scheduled', 'completed'].includes(props.consultation.status)) return;
+    if (document.visibilityState !== 'visible' || !hasUnreadIncoming()) return;
+
+    if (markingRead) {
+        markAgain = true; // ada pesan baru saat request berjalan, ulangi setelahnya
+        return;
+    }
+
+    markingRead = true;
+    try {
+        const res = await fetch(route('consultations.read', props.consultation.id), {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-Socket-ID': window.Echo.socketId() ?? '',
+            },
+        });
+
+        if (res.ok) {
+            const now = new Date().toISOString();
+            messages.value.forEach((m) => {
+                if (!isMine(m) && !m.read_at) m.read_at = now;
+            });
+            // Minta lonceng mengambil ulang jumlah notifikasi dari server
+            window.dispatchEvent(new CustomEvent('notifications:refresh'));
+        }
+    } catch (e) {
+        console.error('Gagal menandai pesan dibaca:', e);
+    } finally {
+        markingRead = false;
+        if (markAgain) {
+            markAgain = false;
+            markIncomingAsRead();
+        }
+    }
+}
+
+function onVisibilityChange() {
+    if (document.visibilityState === 'visible') markIncomingAsRead();
+}
+
 function handleTyping() {
     if (!echoChannel || props.consultation.status !== 'scheduled') return;
 
@@ -77,6 +135,7 @@ async function sendMessage() {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
                 'X-Requested-With': 'XMLHttpRequest',
+                'X-Socket-ID': window.Echo.socketId() ?? '',
             },
             body: JSON.stringify({ message: newMessage.value }),
         });
@@ -106,9 +165,6 @@ onMounted(() => {
     scrollToBottom();
 
     // PENTING: subscribe channel SELALU, tidak peduli status saat ini.
-    // Kalau digerbang di belakang "status === scheduled" saja, transisi
-    // pending -> scheduled justru tidak akan pernah "didengar" -- padahal
-    // itu momen paling penting yang perlu diketahui user secara realtime.
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
@@ -117,6 +173,14 @@ onMounted(() => {
         })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
+            if (e.sender.id !== myId) markIncomingAsRead();
+        })
+        .listen('.messages.read', (e) => {
+            if (e.reader_id === myId) return; // abaikan event dari diri sendiri
+
+            messages.value.forEach((m) => {
+                if (isMine(m) && !m.read_at) m.read_at = e.read_at;
+            });
         })
         .listenForWhisper('typing', () => {
             otherPartyTyping.value = true;
@@ -125,10 +189,14 @@ onMounted(() => {
                 otherPartyTyping.value = false;
             }, 3000);
         });
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    markIncomingAsRead();
 });
 
 onBeforeUnmount(() => {
     clearTimeout(typingHideTimeout);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     window.Echo.leave(channelName);
 });
 </script>
@@ -178,15 +246,27 @@ onBeforeUnmount(() => {
 
             <template v-else>
                 <div ref="messagesContainer" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
-                    <div
+                   <div
                         v-for="msg in messages"
                         :key="msg.id"
                         class="max-w-[80%] p-3 rounded-lg text-sm"
-                        :class="msg.sender.id === page.props.auth.user.id
+                        :class="isMine(msg)
                             ? 'ml-auto bg-teal-600 text-white'
                             : 'bg-gray-100 text-gray-700'"
                     >
-                        {{ msg.message }}
+                        <p>{{ msg.message }}</p>
+                        <div
+                            class="mt-1 flex items-center justify-end gap-1 text-[10px]"
+                            :class="isMine(msg) ? 'text-teal-100' : 'text-gray-400'"
+                        >
+                            <span>{{ formatTime(msg.sent_at) }}</span>
+                            <span
+                                v-if="isMine(msg)"
+                                :class="msg.read_at ? 'text-sky-300 font-bold' : ''"
+                                :title="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                                :aria-label="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                            >{{ msg.read_at ? '✓✓' : '✓' }}</span>
+                        </div>
                     </div>
                     <p v-if="messages.length === 0" class="text-xs text-gray-400 text-center py-6">
                         Belum ada pesan. Mulai percakapan di bawah.

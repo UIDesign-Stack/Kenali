@@ -16,7 +16,10 @@ const sendError = ref(null);
 const messagesContainer = ref(null);
 const actionError = ref(null);
 const otherPartyTyping = ref(false);
+const myId = page.props.auth.user.id;
 
+let markingRead = false;
+let markAgain = false;
 let echoChannel = null;
 let typingHideTimeout = null;
 let lastWhisperAt = 0;
@@ -53,7 +56,59 @@ function pushIfNew(message) {
     otherPartyTyping.value = false;
     clearTimeout(typingHideTimeout);
 }
+const isMine = (msg) => msg.sender.id === myId;
 
+function formatTime(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+const hasUnreadIncoming = () =>
+    messages.value.some((m) => !isMine(m) && !m.read_at);
+
+// Tandai pesan pasien sudah dibaca (hanya jika chat tampil dan tab terlihat)
+async function markIncomingAsRead() {
+    if (props.consultation.status !== 'scheduled') return;
+    if (document.visibilityState !== 'visible' || !hasUnreadIncoming()) return;
+
+    if (markingRead) {
+        markAgain = true;
+        return;
+    }
+
+    markingRead = true;
+    try {
+        const res = await fetch(route('psikolog.consultations.read', props.consultation.id), {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-Socket-ID': window.Echo.socketId() ?? '',
+            },
+        });
+
+        if (res.ok) {
+            const now = new Date().toISOString();
+            messages.value.forEach((m) => {
+                if (!isMine(m) && !m.read_at) m.read_at = now;
+            });
+            window.dispatchEvent(new CustomEvent('notifications:refresh'));
+        }
+    } catch (e) {
+        console.error('Gagal menandai pesan dibaca:', e);
+    } finally {
+        markingRead = false;
+        if (markAgain) {
+            markAgain = false;
+            markIncomingAsRead();
+        }
+    }
+}
+
+function onVisibilityChange() {
+    if (document.visibilityState === 'visible') markIncomingAsRead();
+}
 function handleTyping() {
     if (!echoChannel || props.consultation.status !== 'scheduled') return;
 
@@ -78,6 +133,7 @@ async function sendMessage() {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
                 'X-Requested-With': 'XMLHttpRequest',
+                'X-Socket-ID': window.Echo.socketId() ?? '',
             },
             body: JSON.stringify({ message: newMessage.value }),
         });
@@ -106,9 +162,7 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    // PENTING: subscribe channel SELALU, tidak peduli status saat ini --
-    // supaya psikolog juga bisa "dengar" kalau admin force-cancel konsultasi
-    // yang masih 'pending' (sebelum sempat diterima/dijadwalkan).
+    // PENTING: subscribe channel SELALU, tidak peduli status saat ini.
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
@@ -117,6 +171,14 @@ onMounted(() => {
         })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
+            if (e.sender.id !== myId) markIncomingAsRead();
+        })
+        .listen('.messages.read', (e) => {
+            if (e.reader_id === myId) return;
+
+            messages.value.forEach((m) => {
+                if (isMine(m) && !m.read_at) m.read_at = e.read_at;
+            });
         })
         .listenForWhisper('typing', () => {
             otherPartyTyping.value = true;
@@ -125,10 +187,14 @@ onMounted(() => {
                 otherPartyTyping.value = false;
             }, 3000);
         });
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    markIncomingAsRead();
 });
 
 onBeforeUnmount(() => {
     clearTimeout(typingHideTimeout);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
     window.Echo.leave(channelName);
 });
 
@@ -268,11 +334,23 @@ function topAlternative() {
                         v-for="msg in messages"
                         :key="msg.id"
                         class="max-w-[80%] p-3 rounded-lg text-sm"
-                        :class="msg.sender.id === page.props.auth.user.id
+                        :class="isMine(msg)
                             ? 'ml-auto bg-teal-600 text-white'
                             : 'bg-gray-100 text-gray-700'"
                     >
-                        {{ msg.message }}
+                        <p>{{ msg.message }}</p>
+                        <div
+                            class="mt-1 flex items-center justify-end gap-1 text-[10px]"
+                            :class="isMine(msg) ? 'text-teal-100' : 'text-gray-400'"
+                        >
+                            <span>{{ formatTime(msg.sent_at) }}</span>
+                            <span
+                                v-if="isMine(msg)"
+                                :class="msg.read_at ? 'text-sky-300 font-bold' : ''"
+                                :title="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                                :aria-label="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                            >{{ msg.read_at ? '✓✓' : '✓' }}</span>
+                        </div>
                     </div>
                 </div>
 

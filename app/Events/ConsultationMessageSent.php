@@ -30,10 +30,12 @@ class ConsultationMessageSent implements ShouldBroadcastNow
     public function broadcastWith(): array
     {
         return [
-            'id'         => $this->message->id,
-            'message'    => $this->message->message,
-            'sent_at'    => $this->message->sent_at,
-            'sender'     => [
+            'id'              => $this->message->id,
+            'consultation_id' => $this->message->consultation_id,
+            'message'         => $this->message->message,
+            'sent_at'         => $this->message->sent_at,
+            'read_at'         => null,
+            'sender'          => [
                 'id'   => $this->message->sender->id,
                 'name' => $this->message->sender->name,
             ],
