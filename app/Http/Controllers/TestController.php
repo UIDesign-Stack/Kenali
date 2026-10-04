@@ -62,6 +62,26 @@ class TestController extends Controller
             'life_phase' => ['required', Rule::in(LifePhase::assignableToUserValues())],
         ]);
 
+        $inProgress = $request->user()->testSessions()
+            ->where('status', TestSessionStatus::InProgress->value)
+            ->count();
+
+        if ($inProgress >= 3) {
+            return back()->withErrors([
+                'life_phase' => 'Selesaikan dulu tes yang sedang berjalan sebelum membuat yang baru.',
+            ]);
+        }
+
+        $inProgress = $request->user()->testSessions()
+            ->where('status', TestSessionStatus::InProgress->value)
+            ->count();
+
+        if ($inProgress >= 3) {
+            return back()->withErrors([
+                'life_phase' => 'Selesaikan dulu tes yang sedang berjalan sebelum membuat yang baru.',
+            ]);
+        }
+
         $session = $request->user()->testSessions()->create([
             'life_phase' => $validated['life_phase'],
             'status'     => TestSessionStatus::InProgress->value,
@@ -138,17 +158,25 @@ class TestController extends Controller
         abort_if($testSession->status !== TestSessionStatus::Completed->value, 422, 'Sesi ini belum selesai dikerjakan.');
 
         try {
-
             DB::transaction(function () use ($testSession) {
-                $testSession->result?->delete();
-                $this->generateResult($testSession);
+                // Kunci sesi supaya dua permintaan bersamaan berjalan bergantian
+                $locked = TestSession::whereKey($testSession->id)->lockForUpdate()->first();
+
+                if ($locked->status !== TestSessionStatus::Completed->value) {
+                    return;
+                }
+
+                $locked->result?->delete();
+                $this->generateResult($locked);
             });
 
             return redirect()->route('tests.show', $testSession->id)
                 ->with('success', 'Hasil berhasil dihitung ulang.');
         } catch (\RuntimeException $e) {
+            report($e);
+
             return back()->withErrors([
-                'recalculate' => 'Masih gagal: '.$e->getMessage(),
+                'recalculate' => 'Hasil belum bisa dihitung ulang. Coba lagi nanti atau hubungi admin.',
             ]);
         }
     }
@@ -163,22 +191,18 @@ class TestController extends Controller
 
         abort_if($testSession->status !== TestSessionStatus::InProgress->value, 422, 'Sesi ini tidak bisa diselesaikan.');
 
-        $activeQuestionIds = Question::where('is_active', true)->pluck('id');
-        $answeredQuestionIds = $testSession->answers()->pluck('question_id');
-        $missingQuestionIds = $activeQuestionIds->diff($answeredQuestionIds);
-
-        if ($missingQuestionIds->isNotEmpty()) {
-            return back()->withErrors([
-                'complete' => "Masih ada {$missingQuestionIds->count()} soal yang belum dijawab.",
-            ]);
-        }
-
-        DB::transaction(function () use ($testSession) {
-
+        $missingCount = DB::transaction(function () use ($testSession) {
             $locked = TestSession::whereKey($testSession->id)->lockForUpdate()->first();
 
             if ($locked->status === TestSessionStatus::Completed->value) {
-                return;
+                return 0;
+            }
+
+            $missing = Question::where('is_active', true)->pluck('id')
+                ->diff($locked->answers()->pluck('question_id'));
+
+            if ($missing->isNotEmpty()) {
+                return $missing->count();
             }
 
             $locked->update([
@@ -189,10 +213,17 @@ class TestController extends Controller
             try {
                 $this->generateResult($locked);
             } catch (\RuntimeException $e) {
-
                 Log::warning('TOPSIS gagal dihitung untuk sesi #'.$locked->id.': '.$e->getMessage());
             }
+
+            return 0;
         });
+
+        if ($missingCount > 0) {
+            return back()->withErrors([
+                'complete' => "Ada {$missingCount} soal baru atau belum dijawab. Muat ulang halaman untuk melihatnya.",
+            ]);
+        }
 
         return redirect()->route('tests.show', $testSession->id)
             ->with('success', 'Tes selesai! Berikut hasil rekomendasimu.');

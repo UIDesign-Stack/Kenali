@@ -12,8 +12,17 @@ class Alternative extends Model
     protected $fillable = [
         'name',
         'description',
+        'icon',
         'life_phase',
+        'is_active',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
 
     public function profiles()
     {

@@ -1,6 +1,6 @@
 <script setup>
 import { router, Head } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -19,6 +19,8 @@ function scorePercent(score) {
 }
 
 function retryCalculation() {
+    if (retrying.value) return;
+
     retrying.value = true;
     retryError.value = null;
 
@@ -29,6 +31,21 @@ function retryCalculation() {
         onFinish: () => (retrying.value = false),
     });
 }
+
+// Tangkap respons non-Inertia, misalnya 429 dari throttle
+let removeInvalid = null;
+
+onMounted(() => {
+    removeInvalid = router.on('invalid', (event) => {
+        if (event.detail.response.status === 429) {
+            event.preventDefault();
+            retryError.value = 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.';
+            retrying.value = false;
+        }
+    });
+});
+
+onBeforeUnmount(() => removeInvalid?.());
 </script>
 
 <template>
@@ -48,8 +65,8 @@ function retryCalculation() {
 
             <div v-if="!hasResult" class="p-6 border border-amber-200 bg-amber-50 rounded-lg text-center">
                 <p class="text-sm text-amber-700 mb-4">
-                    Hasil belum bisa dihitung. Kemungkinan bobot AHP atau data
-                    alternatif belum lengkap di sistem saat itu.
+                    Hasil rekomendasi belum bisa ditampilkan saat ini. Silakan coba hitung ulang,
+                    atau hubungi admin jika masalah berlanjut.
                 </p>
                 <button
                     type="button"

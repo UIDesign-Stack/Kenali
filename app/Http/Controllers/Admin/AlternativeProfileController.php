@@ -9,12 +9,15 @@ use App\Models\AlternativeProfile;
 use App\Models\Criteria;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class AlternativeProfileController extends Controller
 {
+
     public function edit(Alternative $alternative)
     {
-        $criteria = Criteria::with(['subCriteria' => fn ($q) => $q->orderBy('order')])
+        $criteria = Criteria::select('id', 'code', 'name', 'order')
+            ->with(['subCriteria' => fn ($q) => $q->select('id', 'criteria_id', 'code', 'name', 'order')->orderBy('order')])
             ->orderBy('order')
             ->get();
 
@@ -42,12 +45,25 @@ class AlternativeProfileController extends Controller
             ])
             ->all();
 
+        Log::info('Profil ideal alternatif diubah', [
+            'alternative_id' => $alternative->id,
+            'admin_id'       => $request->user()->id,
+            'old'            => $alternative->profiles()->pluck('ideal_score', 'sub_criteria_id')->all(),
+            'new'            => collect($rows)->pluck('ideal_score', 'sub_criteria_id')->all(),
+        ]);
+
         DB::transaction(function () use ($alternative, $rows) {
+            Alternative::whereKey($alternative->id)->lockForUpdate()->first();
+
             AlternativeProfile::upsert(
                 $rows,
                 uniqueBy: ['alternative_id', 'sub_criteria_id'],
                 update: ['ideal_score', 'updated_at']
             );
+
+            AlternativeProfile::where('alternative_id', $alternative->id)
+                ->whereNotIn('sub_criteria_id', collect($rows)->pluck('sub_criteria_id'))
+                ->delete();
         });
 
         return redirect()

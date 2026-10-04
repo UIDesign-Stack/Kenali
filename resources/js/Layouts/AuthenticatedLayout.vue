@@ -16,6 +16,11 @@ const isUser = computed(() => userRoles.value.includes('user'));
 const isPsikolog = computed(() => userRoles.value.includes('psikolog'));
 const isAdmin = computed(() => userRoles.value.includes('admin'));
 
+const avatarUrl = computed(() => page.props.auth.user?.avatar_url ?? null);
+const userInitial = computed(() =>
+    (page.props.auth.user?.name ?? '?').trim().charAt(0).toUpperCase()
+);
+
 function closeMobileNav() {
     showingNavigationDropdown.value = false;
 }
@@ -119,6 +124,19 @@ function closeMobileNav() {
                                                 type="button"
                                                 class="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none"
                                             >
+                                                <img
+                                                    v-if="avatarUrl"
+                                                    :src="avatarUrl"
+                                                    alt=""
+                                                    class="me-2 h-8 w-8 rounded-full object-cover"
+                                                />
+                                                <span
+                                                    v-else
+                                                    class="me-2 flex h-8 w-8 items-center justify-center rounded-full bg-teal-100 text-xs font-semibold text-teal-700"
+                                                    aria-hidden="true"
+                                                >
+                                                    {{ userInitial }}
+                                                </span>
                                                 {{ page.props.auth.user?.name ?? '' }}
 
                                                 <svg class="-me-0.5 ms-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -248,12 +266,27 @@ function closeMobileNav() {
 
                     <!-- Responsive Settings Options -->
                     <div class="border-t border-gray-200 pb-1 pt-4">
-                        <div class="px-4">
-                            <div class="text-base font-medium text-gray-800">
-                                {{ page.props.auth.user?.name ?? '' }}
-                            </div>
-                            <div class="text-sm font-medium text-gray-500">
-                                {{ page.props.auth.user?.email ?? '' }}
+                        <div class="flex items-center gap-3 px-4">
+                            <img
+                                v-if="avatarUrl"
+                                :src="avatarUrl"
+                                alt=""
+                                class="h-10 w-10 shrink-0 rounded-full object-cover"
+                            />
+                            <span
+                                v-else
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-semibold text-teal-700"
+                                aria-hidden="true"
+                            >
+                                {{ userInitial }}
+                            </span>
+                            <div class="min-w-0">
+                                <div class="truncate text-base font-medium text-gray-800">
+                                    {{ page.props.auth.user?.name ?? '' }}
+                                </div>
+                                <div class="truncate text-sm font-medium text-gray-500">
+                                    {{ page.props.auth.user?.email ?? '' }}
+                                </div>
                             </div>
                         </div>
 

@@ -21,7 +21,27 @@ class AhpService
      */
     public function calculate(array $matrix, array $labels): array
     {
+        $matrix = array_map('array_values', array_values($matrix));
+        $labels = array_values($labels);
         $n = count($matrix);
+
+        if ($n < 2 || $n > 10) {
+            throw new \InvalidArgumentException('Jumlah item harus antara 2 dan 10.');
+        }
+        if (count($labels) !== $n || count(array_unique($labels)) !== $n) {
+            throw new \InvalidArgumentException('Label harus unik dan sebanyak ukuran matriks.');
+        }
+
+        foreach ($matrix as $row) {
+            if (count($row) !== $n) {
+                throw new \InvalidArgumentException('Matriks harus persegi.');
+            }
+            foreach ($row as $value) {
+                if (! is_numeric($value) || $value <= 0) {
+                    throw new \InvalidArgumentException('Semua nilai matriks harus berupa angka positif.');
+                }
+            }
+        }
 
         // 1. Jumlah tiap kolom
         $columnSums = array_fill(0, $n, 0);
@@ -62,22 +82,25 @@ class AhpService
         $lambdaMax /= $n;
 
         // 5. Consistency Index (CI) dan Consistency Ratio (CR)
-        $ci = ($lambdaMax - $n) / ($n - 1 == 0 ? 1 : $n - 1);
-        $ri = $this->randomIndex[$n] ?? 1.49;
+        $ci = ($lambdaMax - $n) / ($n - 1);
+        $ri = $this->randomIndex[$n]
+            ?? throw new \InvalidArgumentException("Random Index untuk n={$n} belum tersedia.");
         $cr = $ri == 0 ? 0 : $ci / $ri;
 
-        // 6. Susun hasil bobot berdasarkan label
+        // 6. Susun hasil bobot berdasarkan label (bobot TIDAK dibulatkan agar jumlahnya tetap 1)
         $weightsByLabel = [];
         foreach ($labels as $index => $label) {
-            $weightsByLabel[$label] = round($weights[$index], 4);
+            $weightsByLabel[$label] = $weights[$index];
         }
+
+        $crRounded = round($cr, 4);
 
         return [
             'weights'       => $weightsByLabel,
             'lambda_max'    => round($lambdaMax, 4),
             'ci'            => round($ci, 4),
-            'cr'            => round($cr, 4),
-            'is_consistent' => $cr <= 0.1,
+            'cr'            => $crRounded,
+            'is_consistent' => $crRounded <= 0.1,
         ];
     }
 }

@@ -154,14 +154,27 @@ function finishTest() {
         return;
     }
 
+    if (completing.value) return;
+
     completing.value = true;
     errorMessage.value = null;
 
     router.post(route('tests.complete', props.testSession.id), {}, {
         onError: (errors) => {
             errorMessage.value = errors.complete ?? 'Gagal menyelesaikan tes.';
-            completing.value = false;
+
+            // Soal baru mungkin diaktifkan admin: muat ulang daftar soal dan jawaban
+            router.reload({
+                only: ['questions', 'existingAnswers'],
+                preserveScroll: true,
+                onSuccess: () => {
+                    answers.value = { ...props.existingAnswers, ...answers.value };
+                    inactiveQuestionIds.clear();
+                    currentIndex.value = findFirstUnanswered();
+                },
+            });
         },
+        onFinish: () => (completing.value = false),
     });
 }
 </script>

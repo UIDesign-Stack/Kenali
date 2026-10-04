@@ -14,6 +14,16 @@ class AlternativeRequest extends FormRequest
         return true;
     }
 
+    // BARU: rapikan input sebelum divalidasi
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'name'        => is_string($this->name) ? preg_replace('/\s+/u', ' ', trim($this->name)) : $this->name,
+            'description' => is_string($this->description) ? trim($this->description) : $this->description,
+            'icon'        => is_string($this->icon) ? trim($this->icon) : $this->icon,
+        ]);
+    }
+
     public function rules(): array
     {
         $alternative = $this->route('alternative');
@@ -22,11 +32,12 @@ class AlternativeRequest extends FormRequest
             'name' => [
                 'required',
                 'string',
+                'min:2', // BARU
                 'max:255',
                 Rule::unique('alternatives', 'name')->ignore($alternative?->id),
             ],
             'description' => ['nullable', 'string', 'max:2000'],
-            'icon'        => ['nullable', 'string', 'max:255'],
+            'icon'        => ['nullable', 'string', 'max:50', 'regex:/^[\p{L}\p{N}\p{So}\p{Sk}\p{M}_\- ]+$/u'],
             'life_phase'  => ['required', new Enum(LifePhase::class)],
         ];
     }

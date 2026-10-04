@@ -12,7 +12,16 @@ class Question extends Model
     protected $fillable = [
         'sub_criteria_id',
         'question_text',
+        'order',
+        'is_active',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
 
     public function subCriteria()
     {

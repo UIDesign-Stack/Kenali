@@ -62,13 +62,18 @@ function saveEdit(question) {
 const togglingId = ref(null);
 const destroyingId = ref(null);
 const destroyError = ref('');
+const toggleError = ref('');
 
 function toggleActive(question) {
     if (togglingId.value) return;
 
     togglingId.value = question.id;
+    toggleError.value = '';
     router.patch(route('admin.questions.toggle-active', question.id), {}, {
         preserveScroll: true,
+        onError: (errors) => {
+            toggleError.value = errors.question || 'Gagal mengubah status soal.';
+        },
         onFinish: () => (togglingId.value = null),
     });
 }
@@ -82,6 +87,7 @@ function destroyQuestion(question) {
 
     router.delete(route('admin.questions.destroy', question.id), {
         preserveScroll: true,
+        onSuccess: () => (destroyError.value = ''),
         onError: (errors) => {
             destroyError.value = errors.question || 'Gagal menghapus soal.';
         },
@@ -112,6 +118,10 @@ function destroyQuestion(question) {
 
             <div v-if="destroyError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
                 {{ destroyError }}
+            </div>
+
+            <div v-if="toggleError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
+                {{ toggleError }}
             </div>
 
             <!-- Form tambah soal -->

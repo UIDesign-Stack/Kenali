@@ -115,7 +115,8 @@ function destroyAlternative(alternative) {
                             </Link>
                             <button
                                 @click="toggleActive(alt)"
-                                :disabled="isProcessing(alt, 'toggle')"
+                                :disabled="isProcessing(alt, 'toggle') || (!alt.is_active && alt.profiles_count < totalSubCriteria)"
+                                :title="!alt.is_active && alt.profiles_count < totalSubCriteria ? 'Lengkapi profil ideal dulu' : ''"
                                 class="text-gray-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {{ isProcessing(alt, 'toggle') ? '...' : (alt.is_active ? 'Nonaktifkan' : 'Aktifkan') }}

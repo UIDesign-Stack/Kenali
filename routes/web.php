@@ -34,6 +34,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])
+        ->middleware('throttle:10,1')
+        ->name('profile.avatar.update');
+    Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])
+        ->name('profile.avatar.destroy');
 
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
@@ -46,9 +51,13 @@ Route::middleware(['auth', 'verified', 'role:user'])->group(function () {
     Route::get('/tests/create', [TestController::class, 'create'])->name('tests.create');
     Route::post('/tests', [TestController::class, 'store'])->name('tests.store');
     Route::get('/tests/{testSession}', [TestController::class, 'show'])->name('tests.show');
-    Route::post('/tests/{testSession}/answers', [TestController::class, 'saveAnswer'])->name('tests.answers.save');
+    Route::post('/tests/{testSession}/answers', [TestController::class, 'saveAnswer'])
+    ->middleware('throttle:120,1')
+    ->name('tests.answers.save');
     Route::post('/tests/{testSession}/complete', [TestController::class, 'complete'])->name('tests.complete');
-    Route::post('/tests/{testSession}/recalculate', [TestController::class, 'recalculate'])->name('tests.recalculate');
+    Route::post('/tests/{testSession}/recalculate', [TestController::class, 'recalculate'])
+    ->middleware('throttle:5,1')
+    ->name('tests.recalculate');
 
     Route::get('/consultations', [ConsultationController::class, 'index'])->name('consultations.index');
     Route::get('/consultations/create', [ConsultationController::class, 'create'])->name('consultations.create');

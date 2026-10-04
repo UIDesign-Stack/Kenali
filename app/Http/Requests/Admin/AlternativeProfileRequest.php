@@ -10,15 +10,15 @@ class AlternativeProfileRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->hasRole('admin') ?? false;
     }
 
     public function rules(): array
     {
         return [
-            'scores'                    => ['required', 'array', 'min:1'],
-            'scores.*.sub_criteria_id'  => ['required', 'integer', 'distinct', 'exists:sub_criteria,id'],
-            'scores.*.ideal_score'      => ['required', 'numeric', 'min:1', 'max:5'],
+            'scores'                   => ['required', 'array', 'min:1', 'max:200'],
+            'scores.*.sub_criteria_id' => ['required', 'integer', 'distinct', 'exists:sub_criteria,id'],
+            'scores.*.ideal_score'     => ['required', 'numeric', 'between:1,5', 'decimal:0,2'],
         ];
     }
 
@@ -33,15 +33,16 @@ class AlternativeProfileRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
+            if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
             $submittedIds = collect($this->input('scores', []))
                 ->pluck('sub_criteria_id')
-                ->filter()
                 ->map(fn ($id) => (int) $id)
                 ->all();
 
-            $allSubCriteriaIds = SubCriteria::pluck('id')->all();
-
-            $missing = array_diff($allSubCriteriaIds, $submittedIds);
+            $missing = array_diff(SubCriteria::pluck('id')->all(), $submittedIds);
 
             if (! empty($missing)) {
                 $validator->errors()->add(

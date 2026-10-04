@@ -1,13 +1,15 @@
 <script setup>
 import { reactive, ref } from 'vue';
-import { router, Link } from '@inertiajs/vue3';
+import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     alternative: { type: Object, required: true },
     criteria: { type: Array, required: true },
-    existingScores: { type: Object, required: true },
+    existingScores: { type: [Object, Array], required: true },
 });
+
+const hasExistingProfile = Object.keys(props.existingScores ?? {}).length > 0;
 
 const scores = reactive({});
 props.criteria.forEach((crit) => {
@@ -20,6 +22,8 @@ const saving = ref(false);
 const errorMessage = ref('');
 
 function submit() {
+    if (saving.value) return;
+
     if (!props.criteria.length) {
         errorMessage.value = 'Tidak ada kriteria untuk disimpan.';
         return;
@@ -45,6 +49,8 @@ function submit() {
 </script>
 
 <template>
+    <Head :title="`Profil Ideal — ${alternative.name}`" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-3">
@@ -64,9 +70,16 @@ function submit() {
                 <strong>{{ alternative.name }}</strong>.
             </p>
 
-            <div v-if="errorMessage" class="mb-6 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
+            <div v-if="errorMessage" class="mb-6 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600" role="alert">
                 {{ errorMessage }}
             </div>
+
+            <p
+                v-if="!hasExistingProfile"
+                class="mb-6 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+            >
+                Profil ini belum pernah diisi. Semua slider diawali di nilai 3, geser sesuai profil ideal sebelum menyimpan.
+            </p>
 
             <form @submit.prevent="submit" class="space-y-10">
                 <div v-for="crit in criteria" :key="crit.id">

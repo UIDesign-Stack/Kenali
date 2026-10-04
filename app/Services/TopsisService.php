@@ -5,10 +5,10 @@ namespace App\Services;
 use App\Models\Alternative;
 use App\Models\SubCriteria;
 use App\Models\TestSession;
+use Illuminate\Support\Facades\Log;
 
 class TopsisService
 {
-
     public function calculate(TestSession $testSession): array
     {
         // 1. Skor rata-rata user per sub-kriteria
@@ -17,6 +17,14 @@ class TopsisService
         // Bobot global tiap sub-kriteria (kriteria utama x lokal)
         $globalWeights = $this->getGlobalWeights();
 
+        // Semua sub-kriteria wajib punya bobot AHP
+        $allSubIds = SubCriteria::pluck('id')->all();
+        $missingWeights = array_diff($allSubIds, array_keys($globalWeights));
+
+        if (! empty($missingWeights)) {
+            throw new \RuntimeException('Bobot AHP belum lengkap untuk semua sub-kriteria.');
+        }
+
         // Hanya proses sub-kriteria yang punya bobot valid DAN ada jawaban user
         $subCriteriaIds = array_keys(array_intersect_key($globalWeights, $userScores));
 
@@ -24,14 +32,32 @@ class TopsisService
             throw new \RuntimeException('Tidak ada data bobot atau jawaban yang cukup untuk menghitung TOPSIS.');
         }
 
-        // Alternatif yang punya profil ideal lengkap untuk sub-kriteria yang dipakai
-        $alternatives = Alternative::where('is_active', true)
+        // Normalisasi bobot dari sub-kriteria yang dipakai, supaya jumlahnya tepat 1
+        $globalWeights = array_intersect_key($globalWeights, array_flip($subCriteriaIds));
+        $totalWeight = array_sum($globalWeights);
+        if ($totalWeight > 0) {
+            $globalWeights = array_map(fn ($w) => $w / $totalWeight, $globalWeights);
+        }
+
+        // Alternatif aktif yang punya profil ideal lengkap untuk sub-kriteria yang dipakai
+        $all = Alternative::where('is_active', true)
             ->with(['profiles' => fn ($q) => $q->whereIn('sub_criteria_id', $subCriteriaIds)])
-            ->get()
-            ->filter(fn ($alt) => $alt->profiles->count() === count($subCriteriaIds));
+            ->get();
+
+        $alternatives = $all->filter(fn ($alt) => $alt->profiles->count() === count($subCriteriaIds));
+
+        if ($all->count() !== $alternatives->count()) {
+            Log::warning('Alternatif dilewati karena profil tidak lengkap', [
+                'ids' => $all->diff($alternatives)->pluck('id')->all(),
+            ]);
+        }
 
         if ($alternatives->isEmpty()) {
             throw new \RuntimeException('Tidak ada alternatif dengan profil ideal lengkap untuk dihitung.');
+        }
+
+        if ($alternatives->count() < 2) {
+            throw new \RuntimeException('Minimal dua alternatif aktif dengan profil lengkap diperlukan.');
         }
 
         // 2 & 3. Bangun matriks keputusan (match score) per alternatif per sub-kriteria
@@ -108,12 +134,13 @@ class TopsisService
 
     /**
      * Ambil skor rata-rata jawaban user untuk tiap sub-kriteria dalam satu sesi.
-     * Skala jawaban 1-5 langsung dipakai sebagai skor sub-kriteria.
+     * Hanya soal yang masih aktif yang dihitung.
      */
     protected function getUserScoresPerSubCriteria(TestSession $testSession): array
     {
         return $testSession->answers()
             ->join('questions', 'test_answers.question_id', '=', 'questions.id')
+            ->where('questions.is_active', true)
             ->selectRaw('questions.sub_criteria_id, AVG(test_answers.answer_value) as avg_score')
             ->groupBy('questions.sub_criteria_id')
             ->pluck('avg_score', 'sub_criteria_id')

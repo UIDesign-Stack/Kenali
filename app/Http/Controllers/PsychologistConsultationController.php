@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\MarkConsultationMessagesAsRead;
 use App\Enums\ConsultationStatus;
 use App\Events\ConsultationMessageSent;
 use App\Events\ConsultationStatusChanged;
@@ -10,7 +11,6 @@ use App\Http\Requests\UpdateConsultationStatusRequest;
 use App\Models\Consultation;
 use App\Notifications\ConsultationStatusUpdated;
 use App\Notifications\NewConsultationMessage;
-use App\Actions\MarkConsultationMessagesAsRead;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -56,7 +56,6 @@ class PsychologistConsultationController extends Controller
         $validated = $request->validated();
 
         $context = DB::transaction(function () use ($validated, $consultation) {
-
             $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->first();
 
             abort_if(
@@ -72,9 +71,30 @@ class PsychologistConsultationController extends Controller
                 'Konsultasi harus dijadwalkan (scheduled) dulu sebelum bisa ditandai selesai.'
             );
 
+            abort_if(
+                $validated['status'] === ConsultationStatus::Scheduled->value
+                    && $locked->status !== ConsultationStatus::Pending->value,
+                422,
+                'Hanya permintaan yang masih menunggu yang bisa dijadwalkan.'
+            );
+
             $previousStatus = $locked->status;
 
-            $locked->update($validated);
+            // Simpan hanya field yang relevan untuk status tujuan
+            $payload = ['status' => $validated['status']];
+
+            if ($validated['status'] === ConsultationStatus::Scheduled->value) {
+                $payload['scheduled_at'] = $validated['scheduled_at'];
+                if (array_key_exists('notes', $validated)) {
+                    $payload['notes'] = $validated['notes'];
+                }
+            }
+
+            if ($validated['status'] === ConsultationStatus::Cancelled->value) {
+                $payload['cancelled_reason'] = $validated['cancelled_reason'];
+            }
+
+            $locked->update($payload);
 
             return match (true) {
                 $validated['status'] === ConsultationStatus::Scheduled->value => 'scheduled',
@@ -117,6 +137,7 @@ class PsychologistConsultationController extends Controller
 
         $message->load('sender:id,name');
 
+        // notify DULU, baru broadcast, supaya notifikasi sudah ada di DB saat penerima memanggil /read
         $consultation->loadMissing('user');
         $consultation->user->notify(new NewConsultationMessage($message));
 
@@ -124,6 +145,7 @@ class PsychologistConsultationController extends Controller
 
         return response()->json(['data' => $message]);
     }
+
     public function markAsRead(Consultation $consultation, Request $request, MarkConsultationMessagesAsRead $markAsRead)
     {
         $this->authorizeOwnership($consultation, $request);
@@ -133,8 +155,9 @@ class PsychologistConsultationController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
     private function authorizeOwnership(Consultation $consultation, Request $request): void
     {
-        abort_if($consultation->psychologistProfile->user_id !== $request->user()->id, 403);
+        abort_if($consultation->psychologistProfile?->user_id !== $request->user()->id, 403);
     }
 }

@@ -12,6 +12,8 @@ class CriteriaWeight extends Model
     protected $fillable = [
         'criteria_id',
         'weight',
+        'cr_value',
+        'note',
         'set_by',
     ];
 
