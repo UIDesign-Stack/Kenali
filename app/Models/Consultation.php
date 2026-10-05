@@ -47,4 +47,8 @@ class Consultation extends Model
     {
         return $this->hasMany(ConsultationMessage::class)->orderBy('sent_at');
     }
+    public function review()
+    {
+        return $this->hasOne(ConsultationReview::class);
+    }
 }

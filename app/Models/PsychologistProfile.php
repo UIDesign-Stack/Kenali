@@ -14,13 +14,19 @@ class PsychologistProfile extends Model
         'license_number',
         'specialization',
         'bio',
+        'photo',
+        'years_of_experience',
+        'is_available',
         'is_verified',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_verified' => 'boolean',
+            'is_verified'  => 'boolean',
+            'is_available' => 'boolean',
+            'rating_avg'   => 'float',
+            'rating_count' => 'integer',
         ];
     }
 
@@ -32,5 +38,9 @@ class PsychologistProfile extends Model
     public function consultations()
     {
         return $this->hasMany(Consultation::class);
+    }
+    public function reviews()
+    {
+        return $this->hasMany(ConsultationReview::class);
     }
 }

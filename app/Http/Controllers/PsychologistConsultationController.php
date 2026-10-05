@@ -29,6 +29,7 @@ class PsychologistConsultationController extends Controller
 
         return Inertia::render('Psychologist/Consultations/Index', [
             'consultations' => $consultations,
+            'profile'       => $profile->only('id', 'rating_avg', 'rating_count'),
         ]);
     }
 
@@ -44,10 +45,14 @@ class PsychologistConsultationController extends Controller
             'user:id,name,life_phase',
             'testSession.result.details' => fn ($q) => $q->orderBy('rank')->with('alternative:id,name'),
             'messages.sender:id,name',
+            'review:id,consultation_id,rating,comment,is_hidden,reply,replied_at,reply_hidden,created_at',
         ]);
 
+        $review = $consultation->review;
+
         return Inertia::render('Psychologist/Consultations/Show', [
-            'consultation' => $consultation,
+            'consultation'  => $consultation,
+            'replyEditable' => $review && ! $review->is_hidden ? $review->isReplyEditable() : false,
         ]);
     }
 

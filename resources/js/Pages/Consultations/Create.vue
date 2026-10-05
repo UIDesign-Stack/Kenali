@@ -1,6 +1,7 @@
 <script setup>
 import { useForm, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import StarRating from '@/Components/StarRating.vue';
 
 const props = defineProps({
     psychologists: { type: Array, required: true },
@@ -72,6 +73,24 @@ function submit() {
                                     </span>
                                 </p>
                                 <p class="text-xs text-gray-500">{{ psych.specialization }}</p>
+                                <div class="mt-1 flex items-center gap-2">
+                                    <template v-if="psych.rating_count > 0">
+                                        <StarRating :model-value="Number(psych.rating_avg)" readonly size="text-sm" />
+                                        <span class="text-xs text-gray-500">
+                                            {{ Number(psych.rating_avg).toFixed(1) }} ({{ psych.rating_count }} ulasan)
+                                        </span>
+                                        <a
+                                            :href="route('psychologists.reviews', psych.id)"
+                                            target="_blank"
+                                            rel="noopener"
+                                            @click.stop
+                                            class="text-xs text-teal-600 hover:underline"
+                                        >
+                                            Lihat ulasan
+                                        </a>
+                                    </template>
+                                    <span v-else class="text-xs text-gray-400">Belum ada ulasan</span>
+                                </div>
                             </div>
                         </label>
                     </div>

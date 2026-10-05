@@ -4,6 +4,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 defineProps({
     consultations: { type: Array, required: true },
+    profile: { type: Object, default: null },
 });
 
 const statusLabel = {
@@ -37,6 +38,17 @@ const typeLabel = {
         </template>
 
         <div class="max-w-2xl mx-auto p-6">
+            <Link
+                v-if="profile"
+                :href="route('psychologists.reviews', profile.id)"
+                class="mb-4 flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:border-teal-300 text-sm"
+            >
+                <span class="text-gray-700">Ulasan tentang saya</span>
+                <span class="text-gray-500">
+                    ★ {{ profile.rating_count > 0 ? Number(profile.rating_avg).toFixed(1) : '–' }}
+                    · {{ profile.rating_count }} ulasan
+                </span>
+            </Link>
             <div v-if="consultations.length === 0" class="text-center py-16 text-sm text-gray-400">
                 Belum ada permintaan konsultasi.
             </div>

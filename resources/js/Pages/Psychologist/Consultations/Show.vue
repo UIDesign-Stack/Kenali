@@ -2,11 +2,13 @@
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { router, Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import ReviewReplyForm from '@/Components/ReviewReplyForm.vue';
 
 const page = usePage();
 
 const props = defineProps({
     consultation: { type: Object, required: true },
+    replyEditable: { type: Boolean, default: false },
 });
 
 const messages = ref([...props.consultation.messages]);
@@ -271,6 +273,10 @@ function topAlternative() {
         <div class="max-w-xl mx-auto p-6">
             <p class="text-xs text-gray-400 mb-3">Jenis: {{ typeLabel[consultation.type] ?? consultation.type }}</p>
 
+                        <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ $page.props.flash.success }}
+            </div>
+
             <div v-if="actionError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
                 {{ actionError }}
             </div>
@@ -383,8 +389,17 @@ function topAlternative() {
                 </button>
             </template>
 
-            <div v-if="consultation.status === 'completed'" class="text-center text-sm text-green-600 py-6">
-                Konsultasi ini sudah selesai.
+            <div v-if="consultation.status === 'completed'">
+                <div class="text-center text-sm text-green-600 py-6">
+                    Konsultasi ini sudah selesai.
+                </div>
+
+                <ReviewReplyForm
+                    v-if="consultation.review"
+                    :review="consultation.review"
+                    :editable="replyEditable"
+                />
+                <p v-else class="text-center text-xs text-gray-400">Pasien belum memberi ulasan.</p>
             </div>
             <div v-if="consultation.status === 'cancelled'" class="text-center text-sm text-gray-500 py-6">
                 Dibatalkan: {{ consultation.cancelled_reason }}

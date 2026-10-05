@@ -34,6 +34,9 @@ function toggleAvailable(psych) {
                 {{ $page.props.flash.success }}
             </div>
 
+            <div v-if="$page.props.errors?.psychologist" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
+                {{ $page.props.errors.psychologist }}
+            </div>
             <div class="space-y-3">
                 <div
                     v-for="psych in psychologists"
@@ -66,6 +69,12 @@ function toggleAvailable(psych) {
                                 class="text-xs text-gray-500 hover:text-teal-600"
                             >
                                 Lihat Konsultasi
+                            </Link>
+                            <Link
+                                :href="route('admin.psychologists.reviews', psych.id)"
+                                class="text-xs text-gray-500 hover:text-teal-600"
+                            >
+                                Ulasan ({{ psych.rating_count }})
                             </Link>
                             <button
                                 @click="toggleVerified(psych)"

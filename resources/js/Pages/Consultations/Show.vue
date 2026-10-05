@@ -2,11 +2,13 @@
 import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { router, Link, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import ReviewForm from '@/Components/ReviewForm.vue';
 
 const page = usePage();
 
 const props = defineProps({
     consultation: { type: Object, required: true },
+    reviewEditable: { type: Boolean, default: false },
 });
 
 const messages = ref([...props.consultation.messages]);
@@ -19,6 +21,7 @@ const otherPartyTyping = ref(false);
 const myId = page.props.auth.user.id;
 let markingRead = false;
 let markAgain = false;
+
 let echoChannel = null;
 let typingHideTimeout = null;
 let lastWhisperAt = 0;
@@ -66,13 +69,12 @@ function formatTime(dateStr) {
 const hasUnreadIncoming = () =>
     messages.value.some((m) => !isMine(m) && !m.read_at);
 
-// Tandai pesan psikolog sudah dibaca (hanya jika tab sedang terlihat)
 async function markIncomingAsRead() {
     if (!['scheduled', 'completed'].includes(props.consultation.status)) return;
     if (document.visibilityState !== 'visible' || !hasUnreadIncoming()) return;
 
     if (markingRead) {
-        markAgain = true; // ada pesan baru saat request berjalan, ulangi setelahnya
+        markAgain = true;
         return;
     }
 
@@ -93,7 +95,6 @@ async function markIncomingAsRead() {
             messages.value.forEach((m) => {
                 if (!isMine(m) && !m.read_at) m.read_at = now;
             });
-            // Minta lonceng mengambil ulang jumlah notifikasi dari server
             window.dispatchEvent(new CustomEvent('notifications:refresh'));
         }
     } catch (e) {
@@ -164,19 +165,18 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    // PENTING: subscribe channel SELALU, tidak peduli status saat ini.
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
         .listen('.status.changed', () => {
-            router.reload({ only: ['consultation'], preserveScroll: true });
+            router.reload({ only: ['consultation', 'reviewEditable'], preserveScroll: true });
         })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
             if (e.sender.id !== myId) markIncomingAsRead();
         })
         .listen('.messages.read', (e) => {
-            if (e.reader_id === myId) return; // abaikan event dari diri sendiri
+            if (e.reader_id === myId) return;
 
             messages.value.forEach((m) => {
                 if (isMine(m) && !m.read_at) m.read_at = e.read_at;
@@ -221,6 +221,10 @@ onBeforeUnmount(() => {
                 {{ statusLabel[consultation.status] ?? consultation.status }} · {{ typeLabel[consultation.type] ?? consultation.type }}
             </div>
 
+            <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ $page.props.flash.success }}
+            </div>
+
             <div
                 v-if="consultation.type === 'tatap_muka' && consultation.status === 'scheduled'"
                 class="mb-4 p-3 rounded-md bg-teal-50 text-sm text-teal-700"
@@ -246,7 +250,7 @@ onBeforeUnmount(() => {
 
             <template v-else>
                 <div ref="messagesContainer" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
-                   <div
+                    <div
                         v-for="msg in messages"
                         :key="msg.id"
                         class="max-w-[80%] p-3 rounded-lg text-sm"
@@ -295,6 +299,15 @@ onBeforeUnmount(() => {
                     >
                         {{ sending ? 'Mengirim…' : 'Kirim' }}
                     </button>
+                </div>
+
+                <!-- Ulasan: hanya setelah konsultasi selesai -->
+                <div v-if="consultation.status === 'completed'" class="mt-6">
+                    <ReviewForm
+                        :consultation-id="consultation.id"
+                        :review="consultation.review"
+                        :editable="reviewEditable"
+                    />
                 </div>
             </template>
         </div>

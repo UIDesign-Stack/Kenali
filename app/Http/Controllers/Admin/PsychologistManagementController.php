@@ -11,6 +11,8 @@ use App\Notifications\ConsultationStatusUpdated;
 use App\Notifications\PsychologistVerified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\ReviewController;
+use App\Models\ConsultationReview;
 use Inertia\Inertia;
 
 class PsychologistManagementController extends Controller
@@ -136,5 +138,41 @@ class PsychologistManagementController extends Controller
         broadcast(new ConsultationStatusChanged($consultation));
 
         return back()->with('success', 'Konsultasi berhasil dibatalkan oleh admin.');
+    }
+    public function reviews(PsychologistProfile $psychologistProfile)
+    {
+        $psychologistProfile->load('user:id,name');
+
+        // Admin melihat identitas pemilik ulasan untuk keperluan moderasi
+        $reviews = $psychologistProfile->reviews()
+            ->with('user:id,name')
+            ->latest()
+            ->get();
+
+        return Inertia::render('Admin/Psychologists/Reviews', [
+            'psychologistProfile' => $psychologistProfile->only('id', 'rating_avg', 'rating_count') + [
+                'user' => $psychologistProfile->user,
+            ],
+            'reviews' => $reviews,
+        ]);
+    }
+
+    public function toggleReviewHidden(ConsultationReview $review)
+    {
+        DB::transaction(function () use ($review) {
+            $locked = ConsultationReview::whereKey($review->id)->lockForUpdate()->first();
+            $locked->update(['is_hidden' => ! $locked->is_hidden]);
+
+            ReviewController::recalculate($locked->psychologist_profile_id);
+        });
+
+        return back()->with('success', 'Status ulasan diperbarui.');
+    }
+
+    public function toggleReplyHidden(ConsultationReview $review)
+    {
+        $review->update(['reply_hidden' => ! $review->reply_hidden]);
+
+        return back()->with('success', 'Status balasan diperbarui.');
     }
 }

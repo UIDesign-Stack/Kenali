@@ -15,7 +15,9 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schedule;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ReviewController;
 use Inertia\Inertia;
+
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -43,6 +45,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+    Route::get('/psychologists/{psychologistProfile}/reviews', [ReviewController::class, 'index'])->name('psychologists.reviews');
 });
 
 Route::middleware(['auth', 'verified', 'role:user'])->group(function () {
@@ -65,6 +68,12 @@ Route::middleware(['auth', 'verified', 'role:user'])->group(function () {
     Route::get('/consultations/{consultation}', [ConsultationController::class, 'show'])->name('consultations.show');
     Route::post('/consultations/{consultation}/messages', [ConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
     Route::post('/consultations/{consultation}/read', [ConsultationController::class, 'markAsRead'])->name('consultations.read');
+    Route::post('/consultations/{consultation}/review', [ReviewController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('consultations.review.store');
+    Route::patch('/reviews/{review}', [ReviewController::class, 'update'])
+        ->middleware('throttle:10,1')
+        ->name('reviews.update');
 
 });
 
@@ -75,6 +84,9 @@ Route::middleware(['auth', 'verified', 'role:psikolog'])->prefix('psikolog')->na
     Route::patch('/consultations/{consultation}/status', [PsychologistConsultationController::class, 'updateStatus'])->name('consultations.update-status');
     Route::post('/consultations/{consultation}/messages', [PsychologistConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
     Route::post('/consultations/{consultation}/read', [PsychologistConsultationController::class, 'markAsRead'])->name('consultations.read');
+    Route::patch('/reviews/{review}/reply', [ReviewController::class, 'reply'])
+    ->middleware('throttle:10,1')
+    ->name('reviews.reply');
 });
 
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -118,6 +130,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('ad
 
     Route::get('/psychologists/{psychologistProfile}/consultations', [PsychologistManagementController::class, 'consultations'])->name('psychologists.consultations');
     Route::patch('/consultations/{consultation}/force-cancel', [PsychologistManagementController::class, 'forceCancelConsultation'])->name('consultations.force-cancel');
+    Route::get('/psychologists/{psychologistProfile}/reviews', [PsychologistManagementController::class, 'reviews'])->name('psychologists.reviews');
+    Route::patch('/reviews/{review}/toggle-hidden', [PsychologistManagementController::class, 'toggleReviewHidden'])->name('reviews.toggle-hidden');
+    Route::patch('/reviews/{review}/toggle-reply-hidden', [PsychologistManagementController::class, 'toggleReplyHidden'])->name('reviews.toggle-reply-hidden');
 });
 
 require __DIR__.'/auth.php';

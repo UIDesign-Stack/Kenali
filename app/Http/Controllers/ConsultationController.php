@@ -22,7 +22,7 @@ class ConsultationController extends Controller
     {
         $consultations = $request->user()
             ->consultations()
-            ->with('psychologistProfile.user:id,name')
+            ->with('psychologistProfile.user:id,name', 'review:id,consultation_id,rating')
             ->latest()
             ->get();
 
@@ -84,10 +84,11 @@ class ConsultationController extends Controller
             $markAsRead->handle($consultation, $request->user());
         }
 
-        $consultation->load('psychologistProfile.user:id,name', 'messages.sender:id,name');
+        $consultation->load('psychologistProfile.user:id,name', 'messages.sender:id,name', 'review');
 
         return Inertia::render('Consultations/Show', [
-            'consultation' => $consultation,
+            'consultation'   => $consultation,
+            'reviewEditable' => $consultation->review?->isEditableByAuthor() ?? false,
         ]);
     }
 

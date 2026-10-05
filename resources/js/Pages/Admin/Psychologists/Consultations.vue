@@ -1,5 +1,5 @@
 <script setup>
-import { router, Link } from '@inertiajs/vue3';
+import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
@@ -21,6 +21,11 @@ const statusColor = {
     cancelled: 'bg-gray-200 text-gray-500',
 };
 
+const typeLabel = {
+    chat: 'Chat',
+    tatap_muka: 'Tatap Muka Langsung',
+};
+
 function canForceCancel(consultation) {
     return ['pending', 'scheduled'].includes(consultation.status);
 }
@@ -31,15 +36,17 @@ function forceCancel(consultation) {
         'Gunakan hanya untuk kondisi darurat (psikolog tidak bisa login sendiri).\n\n' +
         'Masukkan alasan pembatalan:'
     );
-    if (!reason) return;
+    if (!reason || !reason.trim()) return;
 
     router.patch(route('admin.consultations.force-cancel', consultation.id), {
-        cancelled_reason: reason,
+        cancelled_reason: reason.trim(),
     }, { preserveScroll: true });
 }
 </script>
 
 <template>
+    <Head :title="`Konsultasi — ${psychologistProfile.user.name}`" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center gap-3">
@@ -63,6 +70,10 @@ function forceCancel(consultation) {
                 {{ $page.props.flash.success }}
             </div>
 
+            <div v-if="$page.props.errors?.consultation" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
+                {{ $page.props.errors.consultation }}
+            </div>
+
             <div class="space-y-3">
                 <div
                     v-for="c in consultations"
@@ -71,11 +82,11 @@ function forceCancel(consultation) {
                 >
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-semibold text-gray-800">{{ c.user.name }}</span>
-                        <span class="text-[10px] px-2 py-0.5 rounded-full" :class="statusColor[c.status]">
-                            {{ statusLabel[c.status] }}
+                        <span class="text-[10px] px-2 py-0.5 rounded-full" :class="statusColor[c.status] ?? 'bg-gray-100 text-gray-500'">
+                            {{ statusLabel[c.status] ?? c.status }}
                         </span>
                     </div>
-                    <p class="text-xs text-gray-400 capitalize mb-2">{{ c.type === 'chat' ? 'Chat' : 'Video Call' }}</p>
+                    <p class="text-xs text-gray-400 mb-2">{{ typeLabel[c.type] ?? c.type }}</p>
 
                     <button
                         v-if="canForceCancel(c)"

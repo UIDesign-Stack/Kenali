@@ -65,7 +65,16 @@ const typeLabel = {
                             {{ statusLabel[c.status] ?? c.status }}
                         </span>
                     </div>
+                   <div class="flex items-center justify-between">
                     <p class="text-xs text-gray-400">{{ typeLabel[c.type] ?? c.type }}</p>
+                    <span
+                        v-if="c.status === 'completed'"
+                        class="text-[11px]"
+                        :class="c.review ? 'text-amber-600' : 'text-teal-600 font-medium'"
+                    >
+                        {{ c.review ? `★ ${c.review.rating} · Sudah diulas` : 'Beri ulasan →' }}
+                    </span>
+                </div>
                 </Link>
             </div>
         </div>
