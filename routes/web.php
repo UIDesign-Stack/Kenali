@@ -28,7 +28,8 @@ Route::get('/', function () {
     ]);
 });
 
-Schedule::command('consultations:revert-overdue')->hourly();
+// Schedule::command('consultations:revert-overdue')->hourly();
+Schedule::command('consultations:auto-complete')->hourly()->withoutOverlapping();
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

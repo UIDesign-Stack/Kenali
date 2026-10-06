@@ -9,6 +9,7 @@ const page = usePage();
 const props = defineProps({
     consultation: { type: Object, required: true },
     reviewEditable: { type: Boolean, default: false },
+    closesAt: { type: String, default: null },
 });
 
 const messages = ref([...props.consultation.messages]);
@@ -50,6 +51,12 @@ function scrollToBottom() {
     });
 }
 
+function formatDate(dateStr) {
+    return new Date(dateStr).toLocaleDateString('id-ID', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+}
+
 function pushIfNew(message) {
     if (!messages.value.some((m) => m.id === message.id)) {
         messages.value.push(message);
@@ -57,6 +64,12 @@ function pushIfNew(message) {
     }
     otherPartyTyping.value = false;
     clearTimeout(typingHideTimeout);
+}
+
+function refreshClosesAt() {
+    if (props.closesAt) {
+        router.reload({ only: ['closesAt'], preserveScroll: true });
+    }
 }
 
 const isMine = (msg) => msg.sender.id === myId;
@@ -145,6 +158,7 @@ async function sendMessage() {
             const data = await res.json();
             pushIfNew(data.data);
             newMessage.value = '';
+            refreshClosesAt();
             return;
         }
 
@@ -169,10 +183,11 @@ onMounted(() => {
 
     echoChannel
         .listen('.status.changed', () => {
-            router.reload({ only: ['consultation', 'reviewEditable'], preserveScroll: true });
+            router.reload({ only: ['consultation', 'reviewEditable', 'closesAt'], preserveScroll: true });
         })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
+            refreshClosesAt();
             if (e.sender.id !== myId) markIncomingAsRead();
         })
         .listen('.messages.read', (e) => {
@@ -223,6 +238,15 @@ onBeforeUnmount(() => {
 
             <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
                 {{ $page.props.flash.success }}
+            </div>
+
+            <div
+                v-if="closesAt && consultation.status === 'scheduled'"
+                class="mb-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800"
+                role="status"
+            >
+                Belum ada aktivitas beberapa hari terakhir. Konsultasi ini akan ditutup otomatis pada
+                <strong>{{ formatDate(closesAt) }}</strong>. Kirim pesan untuk melanjutkannya.
             </div>
 
             <div
@@ -301,7 +325,6 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
 
-                <!-- Ulasan: hanya setelah konsultasi selesai -->
                 <div v-if="consultation.status === 'completed'" class="mt-6">
                     <ReviewForm
                         :consultation-id="consultation.id"

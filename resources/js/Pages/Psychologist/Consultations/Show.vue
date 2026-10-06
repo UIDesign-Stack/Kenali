@@ -9,6 +9,7 @@ const page = usePage();
 const props = defineProps({
     consultation: { type: Object, required: true },
     replyEditable: { type: Boolean, default: false },
+    closesAt: { type: String, default: null },
 });
 
 const messages = ref([...props.consultation.messages]);
@@ -50,6 +51,12 @@ function scrollToBottom() {
     });
 }
 
+function formatDate(dateStr) {
+    return new Date(dateStr).toLocaleDateString('id-ID', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+}
+
 function pushIfNew(message) {
     if (!messages.value.some((m) => m.id === message.id)) {
         messages.value.push(message);
@@ -58,6 +65,13 @@ function pushIfNew(message) {
     otherPartyTyping.value = false;
     clearTimeout(typingHideTimeout);
 }
+
+function refreshClosesAt() {
+    if (props.closesAt) {
+        router.reload({ only: ['closesAt'], preserveScroll: true });
+    }
+}
+
 const isMine = (msg) => msg.sender.id === myId;
 
 function formatTime(dateStr) {
@@ -68,7 +82,6 @@ function formatTime(dateStr) {
 const hasUnreadIncoming = () =>
     messages.value.some((m) => !isMine(m) && !m.read_at);
 
-// Tandai pesan pasien sudah dibaca (hanya jika chat tampil dan tab terlihat)
 async function markIncomingAsRead() {
     if (props.consultation.status !== 'scheduled') return;
     if (document.visibilityState !== 'visible' || !hasUnreadIncoming()) return;
@@ -111,6 +124,7 @@ async function markIncomingAsRead() {
 function onVisibilityChange() {
     if (document.visibilityState === 'visible') markIncomingAsRead();
 }
+
 function handleTyping() {
     if (!echoChannel || props.consultation.status !== 'scheduled') return;
 
@@ -144,6 +158,7 @@ async function sendMessage() {
             const data = await res.json();
             pushIfNew(data.data);
             newMessage.value = '';
+            refreshClosesAt();
             return;
         }
 
@@ -164,15 +179,15 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    // PENTING: subscribe channel SELALU, tidak peduli status saat ini.
     echoChannel = window.Echo.private(channelName);
 
     echoChannel
         .listen('.status.changed', () => {
-            router.reload({ only: ['consultation'], preserveScroll: true });
+            router.reload({ only: ['consultation', 'replyEditable', 'closesAt'], preserveScroll: true });
         })
         .listen('.message.sent', (e) => {
             pushIfNew(e);
+            refreshClosesAt();
             if (e.sender.id !== myId) markIncomingAsRead();
         })
         .listen('.messages.read', (e) => {
@@ -273,7 +288,7 @@ function topAlternative() {
         <div class="max-w-xl mx-auto p-6">
             <p class="text-xs text-gray-400 mb-3">Jenis: {{ typeLabel[consultation.type] ?? consultation.type }}</p>
 
-                        <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+            <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
                 {{ $page.props.flash.success }}
             </div>
 
@@ -330,6 +345,15 @@ function topAlternative() {
             </div>
 
             <template v-if="consultation.status === 'scheduled'">
+                <div
+                    v-if="closesAt"
+                    class="mb-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800"
+                    role="status"
+                >
+                    Belum ada aktivitas beberapa hari terakhir. Konsultasi ini akan ditutup otomatis pada
+                    <strong>{{ formatDate(closesAt) }}</strong>. Kirim pesan jika ingin melanjutkannya.
+                </div>
+
                 <div v-if="consultation.type === 'tatap_muka'" class="mb-4 p-3 rounded-md bg-teal-50 text-sm text-teal-700">
                     📍 Pertemuan tatap muka langsung terjadwal. Pastikan detail lokasi
                     sudah disampaikan ke user lewat chat di bawah.

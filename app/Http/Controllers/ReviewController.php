@@ -10,6 +10,7 @@ use App\Models\ConsultationReview;
 use App\Models\PsychologistProfile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use App\Notifications\NewConsultationReview;
 use Inertia\Inertia;
 
 class ReviewController extends Controller
@@ -45,7 +46,9 @@ class ReviewController extends Controller
     {
         abort_if($consultation->user_id !== $request->user()->id, 403);
 
-        $error = DB::transaction(function () use ($request, $consultation) {
+        $created = null;
+
+        $error = DB::transaction(function () use ($request, $consultation, &$created) {
             $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->first();
 
             if ($locked->status !== ConsultationStatus::Completed->value) {
@@ -56,7 +59,7 @@ class ReviewController extends Controller
                 return 'Konsultasi ini sudah pernah kamu ulas.';
             }
 
-            ConsultationReview::create([
+            $created = ConsultationReview::create([
                 'consultation_id'         => $locked->id,
                 'psychologist_profile_id' => $locked->psychologist_profile_id,
                 'user_id'                 => $request->user()->id,
@@ -72,6 +75,10 @@ class ReviewController extends Controller
         if ($error) {
             return back()->withErrors(['review' => $error]);
         }
+
+        // Notifikasi dikirim setelah transaksi selesai, supaya data sudah tersimpan
+        $consultation->loadMissing('psychologistProfile.user');
+        $consultation->psychologistProfile->user->notify(new NewConsultationReview($created));
 
         return back()->with('success', 'Terima kasih, ulasanmu terkirim.');
     }

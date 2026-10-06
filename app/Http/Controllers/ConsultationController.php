@@ -89,6 +89,7 @@ class ConsultationController extends Controller
         return Inertia::render('Consultations/Show', [
             'consultation'   => $consultation,
             'reviewEditable' => $consultation->review?->isEditableByAuthor() ?? false,
+            'closesAt'       => $consultation->autoCloseAt()?->toIso8601String(),
         ]);
     }
 

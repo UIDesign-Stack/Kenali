@@ -53,6 +53,7 @@ class PsychologistConsultationController extends Controller
         return Inertia::render('Psychologist/Consultations/Show', [
             'consultation'  => $consultation,
             'replyEditable' => $review && ! $review->is_hidden ? $review->isReplyEditable() : false,
+            'closesAt'      => $consultation->autoCloseAt()?->toIso8601String(),
         ]);
     }
 

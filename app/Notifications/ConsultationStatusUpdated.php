@@ -23,8 +23,8 @@ class ConsultationStatusUpdated extends Notification implements ShouldQueue
     public function via(object $notifiable): array
     {
         return match ($this->context) {
-            'requested' => ['database', 'broadcast'],
-            default     => ['database', 'mail', 'broadcast'],
+            'requested', 'closing_soon' => ['database', 'broadcast'],
+            default                     => ['database', 'mail', 'broadcast'],
         };
     }
 
@@ -37,6 +37,9 @@ class ConsultationStatusUpdated extends Notification implements ShouldQueue
             'cancelled_after_scheduled' => 'Konsultasi terjadwal dibatalkan psikolog',
             'completed'                 => 'Konsultasi selesai',
             'force_cancelled'           => 'Konsultasi dibatalkan oleh admin',
+            'auto_completed'              => 'Konsultasi selesai, beri ulasan',
+            'closing_soon'                => 'Konsultasi akan ditutup otomatis',
+            'auto_completed_psychologist' => 'Konsultasi ditutup otomatis',
             default                     => 'Update konsultasi',
         };
     }
@@ -52,6 +55,9 @@ class ConsultationStatusUpdated extends Notification implements ShouldQueue
             'cancelled_after_scheduled' => "Konsultasi terjadwalmu dengan {$this->consultation->psychologistProfile->user->name} dibatalkan. Alasan: {$this->consultation->cancelled_reason}",
             'completed'                 => "Konsultasi dengan {$this->consultation->psychologistProfile->user->name} sudah ditandai selesai.",
             'force_cancelled'           => "Konsultasi dibatalkan oleh admin. Alasan: {$this->consultation->cancelled_reason}",
+            'auto_completed'              => "Konsultasi dengan {$this->consultation->psychologistProfile->user->name} otomatis ditutup karena tidak ada aktivitas. Bagikan pengalamanmu lewat ulasan.",
+            'closing_soon'                => 'Tidak ada aktivitas selama beberapa hari. Konsultasi akan ditutup otomatis dalam 2 hari. Kirim pesan untuk melanjutkannya.',
+            'auto_completed_psychologist' => "Konsultasi dengan {$this->consultation->user->name} ditutup otomatis karena tidak ada aktivitas.",
             default                     => 'Ada pembaruan pada konsultasimu.',
         };
     }

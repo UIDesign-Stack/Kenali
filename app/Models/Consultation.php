@@ -21,6 +21,9 @@ class Consultation extends Model
         'cancelled_reason',
     ];
 
+    public const WARN_AFTER_DAYS = 5;
+    public const CLOSE_AFTER_DAYS = 7;
+
     protected function casts(): array
     {
         return [
@@ -50,5 +53,24 @@ class Consultation extends Model
     public function review()
     {
         return $this->hasOne(ConsultationReview::class);
+    }
+
+    public function autoCloseAt(): ?\Illuminate\Support\Carbon
+    {
+        if ($this->status !== \App\Enums\ConsultationStatus::Scheduled->value || ! $this->scheduled_at) {
+            return null;
+        }
+
+        $lastMessage = $this->messages()->reorder()->max('sent_at');
+
+        $last = collect([$this->scheduled_at, $lastMessage ? \Illuminate\Support\Carbon::parse($lastMessage) : null])
+            ->filter()
+            ->max();
+
+        if ($last->gt(now()->subDays(self::WARN_AFTER_DAYS))) {
+            return null; // masih aktif, belum perlu banner
+        }
+
+        return $last->copy()->addDays(self::CLOSE_AFTER_DAYS);
     }
 }
