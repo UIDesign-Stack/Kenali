@@ -6,6 +6,7 @@ class AhpService
 {
     /**
      * Random Index (RI) baku Saaty, berdasarkan jumlah item (n).
+     * Batas maksimum n di sini harus sama dengan MAX_ITEMS di AhpController.
      */
     protected array $randomIndex = [
         1 => 0, 2 => 0, 3 => 0.58, 4 => 0.90, 5 => 1.12,
@@ -37,13 +38,12 @@ class AhpService
                 throw new \InvalidArgumentException('Matriks harus persegi.');
             }
             foreach ($row as $value) {
-                if (! is_numeric($value) || $value <= 0) {
-                    throw new \InvalidArgumentException('Semua nilai matriks harus berupa angka positif.');
+                if (! is_numeric($value) || $value <= 0 || ! is_finite((float) $value)) {
+                    throw new \InvalidArgumentException('Semua nilai matriks harus berupa angka positif yang valid.');
                 }
             }
         }
 
-        // 1. Jumlah tiap kolom
         $columnSums = array_fill(0, $n, 0);
         for ($i = 0; $i < $n; $i++) {
             for ($j = 0; $j < $n; $j++) {
@@ -51,7 +51,6 @@ class AhpService
             }
         }
 
-        // 2. Normalisasi matriks (tiap sel dibagi jumlah kolomnya)
         $normalized = [];
         for ($i = 0; $i < $n; $i++) {
             for ($j = 0; $j < $n; $j++) {
@@ -59,13 +58,15 @@ class AhpService
             }
         }
 
-        // 3. Bobot (priority vector) = rata-rata tiap baris matriks ternormalisasi
         $weights = [];
         for ($i = 0; $i < $n; $i++) {
             $weights[$i] = array_sum($normalized[$i]) / $n;
+
+            if ($weights[$i] <= 0) {
+                throw new \InvalidArgumentException('Bobot tidak valid, periksa kembali nilai matriks.');
+            }
         }
 
-        // 4. Hitung lambda max: (A . w) dibagi w, lalu dirata-rata
         $weightedSumVector = [];
         for ($i = 0; $i < $n; $i++) {
             $sum = 0;
@@ -81,13 +82,11 @@ class AhpService
         }
         $lambdaMax /= $n;
 
-        // 5. Consistency Index (CI) dan Consistency Ratio (CR)
-        $ci = ($lambdaMax - $n) / ($n - 1);
+        $ci = max(0, ($lambdaMax - $n) / ($n - 1));
         $ri = $this->randomIndex[$n]
             ?? throw new \InvalidArgumentException("Random Index untuk n={$n} belum tersedia.");
         $cr = $ri == 0 ? 0 : $ci / $ri;
 
-        // 6. Susun hasil bobot berdasarkan label (bobot TIDAK dibulatkan agar jumlahnya tetap 1)
         $weightsByLabel = [];
         foreach ($labels as $index => $label) {
             $weightsByLabel[$label] = $weights[$index];

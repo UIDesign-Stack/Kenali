@@ -7,14 +7,31 @@ use App\Models\Criteria;
 use App\Models\CriteriaWeight;
 use App\Models\SubCriteria;
 use App\Services\AhpService;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Inertia\Inertia;
 
 class AhpController extends Controller
 {
+    /**
+     * Batas ukuran matriks. Harus sama dengan tabel Random Index (RI)
+     * di AhpService (saat ini n = 1..10), kalau tidak request akan
+     * lolos validasi lalu gagal dengan 500 di service.
+     */
+    private const MAX_ITEMS = 10;
+
+    /**
+     * Rentang skala Saaty: 1/9 sampai 9 (dibulatkan sedikit di bawah 1/9
+     * agar nilai kebalikan seperti 0.1111 tidak ditolak).
+     */
+    private const MIN_VALUE = 0.11;
+    private const MAX_VALUE = 9;
+
     public function __construct(protected AhpService $ahpService) {}
 
     public function criteriaIndex()
@@ -28,49 +45,43 @@ class AhpController extends Controller
 
     public function criteriaStore(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'matrix'         => ['required', 'array', 'min:2', 'max:10'],
-            'matrix.*'       => ['required', 'array', 'min:2', 'max:10'],
-            'matrix.*.*'     => ['required', 'numeric', 'min:0.111', 'max:9'],
-            'criteria_ids'   => ['required', 'array', 'min:2', 'max:10'],
-            'criteria_ids.*' => ['required', 'integer', 'distinct', 'exists:criteria,id'],
-        ]);
+        $validated = $this->validateMatrixRequest($request, 'criteria_ids', 'criteria', 'id');
 
-        $ids = array_map('intval', array_values($validated['criteria_ids']));
+        $criteriaModels = $this->orderedModels(Criteria::class, $validated['criteria_ids']);
 
-        if (count($ids) !== Criteria::count()) {
-            return response()->json([
-                'message' => 'Semua kriteria utama harus ikut dinilai.',
-                'errors'  => ['criteria_ids' => ['Jumlah kriteria tidak lengkap.']],
-            ], 422);
+        if ($criteriaModels->count() !== Criteria::count()) {
+            return $this->errorResponse('Semua kriteria harus ikut dinilai dalam matriks perbandingan.');
         }
 
-        $criteriaModels = Criteria::whereIn('id', $ids)->get()
-            ->sortBy(fn ($c) => array_search($c->id, $ids, true))
-            ->values();
+        $labels = $criteriaModels->pluck('code')->all();
 
-        return $this->processAhpMatrix(
-            $validated['matrix'],
-            $criteriaModels,
-            successMessage: 'Bobot kriteria utama berhasil disimpan.',
-            onSuccess: function (array $result) use ($criteriaModels, $request) {
+        if (! $this->labelsAreUnique($labels)) {
+            return $this->errorResponse('Kode kriteria harus unik agar bobot dapat dipetakan dengan benar.');
+        }
 
-                CriteriaWeight::where('is_active', true)->lockForUpdate()->get();
+        $result = $this->ahpService->calculate($validated['matrix'], $labels);
 
-                CriteriaWeight::whereIn('criteria_id', $criteriaModels->pluck('id'))
-                    ->update(['is_active' => false]);
+        if (! $result['is_consistent']) {
+            return $this->inconsistentResponse($result);
+        }
 
-                foreach ($criteriaModels as $criteria) {
-                    CriteriaWeight::create([
-                        'criteria_id' => $criteria->id,
-                        'weight'      => $result['weights'][$criteria->code],
-                        'cr_value'    => $result['cr'],
-                        'set_by'      => $request->user()->id,
-                        'is_active'   => true,
-                    ]);
-                }
+        $userId = $request->user()->id;
+
+        DB::transaction(function () use ($criteriaModels, $result, $userId) {
+            foreach ($criteriaModels as $criteria) {
+                CriteriaWeight::create([
+                    'criteria_id' => $criteria->id,
+                    'weight'      => $result['weights'][$criteria->code],
+                    'cr_value'    => $result['cr'],
+                    'set_by'      => $userId,
+                ]);
             }
-        );
+        });
+
+        return response()->json([
+            'message'    => 'Bobot kriteria utama berhasil disimpan.',
+            'ahp_result' => $result,
+        ]);
     }
 
     public function subCriteriaIndex(Criteria $criteria)
@@ -85,107 +96,142 @@ class AhpController extends Controller
 
     public function subCriteriaStore(Request $request, Criteria $criteria): JsonResponse
     {
-        $validated = $request->validate([
-            'matrix'             => ['required', 'array', 'min:2', 'max:10'],
-            'matrix.*'           => ['required', 'array', 'min:2', 'max:10'],
-            'matrix.*.*'         => ['required', 'numeric', 'min:0.111', 'max:9'],
-            'sub_criteria_ids'   => ['required', 'array', 'min:2', 'max:10'],
-            'sub_criteria_ids.*' => ['required', 'integer', 'distinct', 'exists:sub_criteria,id'],
-        ]);
-
-        $ids = array_map('intval', array_values($validated['sub_criteria_ids']));
-
-        $subCriteriaModels = SubCriteria::whereIn('id', $ids)
-            ->where('criteria_id', $criteria->id)
-            ->get()
-            ->sortBy(fn ($s) => array_search($s->id, $ids, true))
-            ->values();
-
-        if ($subCriteriaModels->count() !== count($ids)) {
-            return response()->json([
-                'message' => 'Salah satu sub-kriteria tidak ditemukan atau bukan milik kriteria ini.',
-                'errors'  => ['sub_criteria_ids' => ['ID sub-kriteria tidak valid untuk kriteria ini.']],
-            ], 422);
-        }
-
-        if (count($ids) !== $criteria->subCriteria()->count()) {
-            return response()->json([
-                'message' => 'Semua sub-kriteria harus ikut dinilai.',
-                'errors'  => ['sub_criteria_ids' => ['Jumlah sub-kriteria tidak lengkap.']],
-            ], 422);
-        }
-
-        return $this->processAhpMatrix(
-            $validated['matrix'],
-            $subCriteriaModels,
-            successMessage: 'Bobot sub-kriteria berhasil disimpan.',
-            onSuccess: function (array $result) use ($criteriaModels, $request) {
-                // Kunci kriteria supaya dua admin yang menyimpan bersamaan berjalan bergantian
-                Criteria::whereIn('id', $criteriaModels->pluck('id'))->lockForUpdate()->get();
-
-                foreach ($criteriaModels as $criteria) {
-                    CriteriaWeight::create([
-                        'criteria_id' => $criteria->id,
-                        'weight'      => $result['weights'][$criteria->code],
-                        'cr_value'    => $result['cr'],
-                        'set_by'      => $request->user()->id,
-                    ]);
-                }
-            }
-        );
-    }
-
-    private function processAhpMatrix(
-        array $matrix,
-        Collection $models,
-        string $successMessage,
-        callable $onSuccess
-    ): JsonResponse {
-        $labels = $models->pluck('code')->values()->toArray();
-
-        $matrix = array_map(
-            fn ($row) => array_map('floatval', array_values($row)),
-            array_values($matrix)
+        $validated = $this->validateMatrixRequest(
+            $request,
+            'sub_criteria_ids',
+            'sub_criteria',
+            'id',
+            fn (Exists $rule) => $rule->where('criteria_id', $criteria->id)
         );
 
-        $expectedSize = count($labels);
-        if (count($matrix) !== $expectedSize || collect($matrix)->contains(fn ($row) => count($row) !== $expectedSize)) {
-            return $this->invalidMatrix("Ukuran matriks harus {$expectedSize}x{$expectedSize} sesuai jumlah item yang dipilih.");
+        $subCriteriaModels = $this->orderedModels(SubCriteria::class, $validated['sub_criteria_ids']);
+
+        if ($subCriteriaModels->count() !== $criteria->subCriteria()->count()) {
+            return $this->errorResponse('Semua sub-kriteria dari kriteria ini harus ikut dinilai dalam matriks perbandingan.');
         }
 
-        for ($i = 0; $i < $expectedSize; $i++) {
-            if (abs($matrix[$i][$i] - 1) > 0.0001) {
-                return $this->invalidMatrix('Diagonal matriks harus bernilai 1.');
-            }
-            for ($j = $i + 1; $j < $expectedSize; $j++) {
-                if (abs($matrix[$i][$j] * $matrix[$j][$i] - 1) > 0.05) {
-                    return $this->invalidMatrix('Matriks harus resiprokal (nilai a[i][j] x a[j][i] harus mendekati 1).');
-                }
-            }
+        $labels = $subCriteriaModels->pluck('code')->all();
+
+        if (! $this->labelsAreUnique($labels)) {
+            return $this->errorResponse('Kode sub-kriteria harus unik agar bobot dapat dipetakan dengan benar.');
         }
 
-        try {
-            $result = $this->ahpService->calculate($matrix, $labels);
-        } catch (\InvalidArgumentException $e) {
-            return $this->invalidMatrix($e->getMessage());
-        }
+        $result = $this->ahpService->calculate($validated['matrix'], $labels);
 
         if (! $result['is_consistent']) {
-            return response()->json([
-                'message'     => "Matriks tidak konsisten (CR = {$result['cr']}, harus ≤ 0.1). Silakan revisi penilaian perbandingan.",
-                'errors'      => ['matrix' => ["Matriks tidak konsisten (CR = {$result['cr']}, harus ≤ 0.1)."]],
-                'ahp_preview' => $result,
-            ], 422);
+            return $this->inconsistentResponse($result);
         }
 
-        DB::transaction(fn () => $onSuccess($result));
+        DB::transaction(function () use ($subCriteriaModels, $result) {
+            foreach ($subCriteriaModels as $sub) {
+                $sub->forceFill(['local_weight' => $result['weights'][$sub->code]])->save();
+            }
+        });
 
         return response()->json([
-            'message'    => $successMessage,
+            'message'    => 'Bobot sub-kriteria berhasil disimpan.',
             'ahp_result' => $result,
         ]);
     }
-    private function invalidMatrix(string $message): JsonResponse
+
+    /**
+     * Validasi request matriks perbandingan berpasangan dalam satu validator.
+     */
+    protected function validateMatrixRequest(
+        Request $request,
+        string $idsField,
+        string $table,
+        string $column,
+        ?\Closure $extraRule = null
+    ): array {
+        $existsRule = Rule::exists($table, $column);
+        if ($extraRule) {
+            $existsRule = $extraRule($existsRule);
+        }
+
+        $max = self::MAX_ITEMS;
+        $min = self::MIN_VALUE;
+        $top = self::MAX_VALUE;
+
+        $validator = Validator::make($request->all(), [
+            $idsField       => ['required', 'array', 'min:2', "max:{$max}"],
+            "{$idsField}.*" => ['required', 'integer', 'distinct', $existsRule],
+            'matrix'        => ['required', 'array', 'min:2', "max:{$max}"],
+            'matrix.*'      => ['required', 'array', 'min:2', "max:{$max}"],
+            'matrix.*.*'    => ['required', 'numeric', "between:{$min},{$top}"],
+        ]);
+
+        $validator->after(function ($v) use ($request, $idsField) {
+            if ($v->errors()->any()) {
+                return;
+            }
+
+            $ids    = $request->input($idsField);
+            $matrix = $request->input('matrix');
+            $n      = count($ids);
+
+            if (! array_is_list($ids) || ! array_is_list($matrix) || count($matrix) !== $n) {
+                $v->errors()->add('matrix', "Matriks harus berukuran {$n}x{$n} sesuai jumlah item.");
+                return;
+            }
+
+            foreach ($matrix as $row) {
+                if (! array_is_list($row) || count($row) !== $n) {
+                    $v->errors()->add('matrix', "Setiap baris matriks harus berisi {$n} nilai.");
+                    return;
+                }
+            }
+
+            for ($i = 0; $i < $n; $i++) {
+                if (abs($matrix[$i][$i] - 1) > 0.001) {
+                    $v->errors()->add('matrix', 'Diagonal matriks harus bernilai 1.');
+                    return;
+                }
+                for ($j = $i + 1; $j < $n; $j++) {
+                    if (abs($matrix[$i][$j] * $matrix[$j][$i] - 1) > 0.03) {
+                        $v->errors()->add('matrix', 'Matriks harus resiprokal: nilai [i][j] dan [j][i] harus saling berkebalikan.');
+                        return;
+                    }
+                }
+            }
+        });
+
+        return $validator->validate();
+    }
+
+    /**
+     * Ambil model sesuai urutan ID dari request, tanpa FIELD() agar
+     * tidak bergantung pada MySQL/MariaDB.
+     *
+     * @param  class-string  $modelClass
+     */
+    protected function orderedModels(string $modelClass, array $ids): Collection
+    {
+        $byId = $modelClass::whereIn('id', $ids)->get()->keyBy('id');
+
+        return collect($ids)
+            ->map(fn ($id) => $byId->get((int) $id))
+            ->filter()
+            ->values();
+    }
+
+    protected function labelsAreUnique(array $labels): bool
+    {
+        return count($labels) === count(array_unique($labels));
+    }
+
+    protected function inconsistentResponse(array $result): JsonResponse
+    {
+        $message = 'Matriks tidak konsisten (CR = '.$result['cr'].', harus ≤ 0.1).';
+
+        return response()->json([
+            'message'     => $message.' Silakan revisi penilaian perbandingan.',
+            'errors'      => ['matrix' => [$message]],
+            'ahp_preview' => $result,
+        ], 422);
+    }
+
+    protected function errorResponse(string $message): JsonResponse
     {
         return response()->json([
             'message' => $message,

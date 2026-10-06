@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CriteriaWeight extends Model
 {
@@ -20,16 +21,17 @@ class CriteriaWeight extends Model
     protected function casts(): array
     {
         return [
-            'weight' => 'decimal:4',
+            'weight'   => 'float',
+            'cr_value' => 'float',
         ];
     }
 
-    public function criteria()
+    public function criteria(): BelongsTo
     {
         return $this->belongsTo(Criteria::class);
     }
 
-    public function setBy()
+    public function setBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'set_by');
     }

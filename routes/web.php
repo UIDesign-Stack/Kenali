@@ -8,28 +8,20 @@ use App\Http\Controllers\Admin\QuestionController;
 use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\ConsultationController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PsychologistConsultationController;
-use App\Http\Controllers\TestController;
-use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Schedule;
-use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ReviewController;
+use App\Http\Controllers\TestController;
+use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
-        'canLogin'       => Route::has('login'),
-        'canRegister'    => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion'     => PHP_VERSION,
+        'canLogin'    => Route::has('login'),
+        'canRegister' => Route::has('register'),
     ]);
 });
-
-// Schedule::command('consultations:revert-overdue')->hourly();
-Schedule::command('consultations:auto-complete')->hourly()->withoutOverlapping();
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -53,21 +45,29 @@ Route::middleware(['auth', 'verified', 'role:user'])->group(function () {
 
     Route::get('/tests', [TestController::class, 'index'])->name('tests.index');
     Route::get('/tests/create', [TestController::class, 'create'])->name('tests.create');
-    Route::post('/tests', [TestController::class, 'store'])->name('tests.store');
+    Route::post('/tests', [TestController::class, 'store'])
+        ->middleware('throttle:20,1')
+        ->name('tests.store');
     Route::get('/tests/{testSession}', [TestController::class, 'show'])->name('tests.show');
     Route::post('/tests/{testSession}/answers', [TestController::class, 'saveAnswer'])
-    ->middleware('throttle:120,1')
-    ->name('tests.answers.save');
-    Route::post('/tests/{testSession}/complete', [TestController::class, 'complete'])->name('tests.complete');
+        ->middleware('throttle:120,1')
+        ->name('tests.answers.save');
+    Route::post('/tests/{testSession}/complete', [TestController::class, 'complete'])
+        ->middleware('throttle:10,1')
+        ->name('tests.complete');
     Route::post('/tests/{testSession}/recalculate', [TestController::class, 'recalculate'])
-    ->middleware('throttle:5,1')
-    ->name('tests.recalculate');
+        ->middleware('throttle:5,1')
+        ->name('tests.recalculate');
 
     Route::get('/consultations', [ConsultationController::class, 'index'])->name('consultations.index');
     Route::get('/consultations/create', [ConsultationController::class, 'create'])->name('consultations.create');
-    Route::post('/consultations', [ConsultationController::class, 'store'])->name('consultations.store');
+    Route::post('/consultations', [ConsultationController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('consultations.store');
     Route::get('/consultations/{consultation}', [ConsultationController::class, 'show'])->name('consultations.show');
-    Route::post('/consultations/{consultation}/messages', [ConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+    Route::post('/consultations/{consultation}/messages', [ConsultationController::class, 'sendMessage'])
+        ->middleware('throttle:30,1')
+        ->name('consultations.messages.send');
     Route::post('/consultations/{consultation}/read', [ConsultationController::class, 'markAsRead'])->name('consultations.read');
     Route::post('/consultations/{consultation}/review', [ReviewController::class, 'store'])
         ->middleware('throttle:10,1')
@@ -83,19 +83,24 @@ Route::middleware(['auth', 'verified', 'role:psikolog'])->prefix('psikolog')->na
     Route::get('/consultations', [PsychologistConsultationController::class, 'index'])->name('consultations.index');
     Route::get('/consultations/{consultation}', [PsychologistConsultationController::class, 'show'])->name('consultations.show');
     Route::patch('/consultations/{consultation}/status', [PsychologistConsultationController::class, 'updateStatus'])->name('consultations.update-status');
-    Route::post('/consultations/{consultation}/messages', [PsychologistConsultationController::class, 'sendMessage'])->name('consultations.messages.send');
+    Route::post('/consultations/{consultation}/messages', [PsychologistConsultationController::class, 'sendMessage'])
+        ->middleware('throttle:30,1')
+        ->name('consultations.messages.send');
     Route::post('/consultations/{consultation}/read', [PsychologistConsultationController::class, 'markAsRead'])->name('consultations.read');
     Route::patch('/reviews/{review}/reply', [ReviewController::class, 'reply'])
-    ->middleware('throttle:10,1')
-    ->name('reviews.reply');
+        ->middleware('throttle:10,1')
+        ->name('reviews.reply');
 });
 
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
-    // Bobot AHP
     Route::get('/ahp/criteria', [AhpController::class, 'criteriaIndex'])->name('ahp.criteria.index');
-    Route::post('/ahp/criteria', [AhpController::class, 'criteriaStore'])->name('ahp.criteria.store');
+    Route::post('/ahp/criteria', [AhpController::class, 'criteriaStore'])
+        ->middleware('throttle:20,1')
+        ->name('ahp.criteria.store');
     Route::get('/ahp/criteria/{criteria}/sub-criteria', [AhpController::class, 'subCriteriaIndex'])->name('ahp.sub-criteria.index');
-    Route::post('/ahp/criteria/{criteria}/sub-criteria', [AhpController::class, 'subCriteriaStore'])->name('ahp.sub-criteria.store');
+    Route::post('/ahp/criteria/{criteria}/sub-criteria', [AhpController::class, 'subCriteriaStore'])
+        ->middleware('throttle:20,1')
+        ->name('ahp.sub-criteria.store');
 
     Route::get('/questions', [QuestionController::class, 'index'])->name('questions.index');
     Route::get('/questions/sub-criteria/{subCriteria}', [QuestionController::class, 'manage'])->name('questions.manage');
@@ -118,12 +123,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('ad
 
     Route::get('/users', [UserManagementController::class, 'index'])->name('users.index');
     Route::get('/users/create-staff', [UserManagementController::class, 'createStaff'])->name('users.create-staff');
-    Route::post('/users/create-staff', [UserManagementController::class, 'storeStaff'])->name('users.store-staff');
+    Route::post('/users/create-staff', [UserManagementController::class, 'storeStaff'])
+        ->middleware('throttle:10,1')
+        ->name('users.store-staff');
     Route::get('/users/{user}', [UserManagementController::class, 'show'])->name('users.show');
     Route::get('/users/{user}/edit', [UserManagementController::class, 'edit'])->name('users.edit');
     Route::put('/users/{user}', [UserManagementController::class, 'update'])->name('users.update');
     Route::patch('/users/{user}/toggle-active', [UserManagementController::class, 'toggleActive'])->name('users.toggle-active');
-    Route::post('/users/{user}/reset-password', [UserManagementController::class, 'resetPassword'])->name('users.reset-password');
+    Route::post('/users/{user}/reset-password', [UserManagementController::class, 'resetPassword'])
+        ->middleware('throttle:5,1')
+        ->name('users.reset-password');
 
     Route::get('/psychologists', [PsychologistManagementController::class, 'index'])->name('psychologists.index');
     Route::patch('/psychologists/{psychologistProfile}/toggle-verified', [PsychologistManagementController::class, 'toggleVerified'])->name('psychologists.toggle-verified');

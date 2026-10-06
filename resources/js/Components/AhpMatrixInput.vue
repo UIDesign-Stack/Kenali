@@ -30,13 +30,16 @@ function buildEmptyMatrix(size) {
 }
 
 const rawInput = ref(buildEmptyMatrix(n.value));
+const result = ref(null);
+const errorMessage = ref(null);
+const loading = ref(false);
 
 watch(
-    () => props.items,
-    (newItems, oldItems) => {
-        if (newItems.length !== oldItems?.length) {
-            rawInput.value = buildEmptyMatrix(newItems.length);
-        }
+    () => props.items.map((item) => item.id).join(','),
+    () => {
+        rawInput.value = buildEmptyMatrix(props.items.length);
+        result.value = null;
+        errorMessage.value = null;
     }
 );
 
@@ -107,20 +110,54 @@ function describeButton(pair, option) {
     return `${winner} ${strength} dari ${loser}`;
 }
 
-const result = ref(null);
-const errorMessage = ref(null);
-const loading = ref(false);
 
-function getCsrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? null;
+function getCsrfHeader() {
+    const cookie = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    if (cookie) {
+        return { name: 'X-XSRF-TOKEN', value: decodeURIComponent(cookie[1]) };
+    }
+
+    const meta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (meta) {
+        return { name: 'X-CSRF-TOKEN', value: meta };
+    }
+
+    return null;
+}
+
+
+function resolveEndpoint() {
+    const url = new URL(props.submitUrl, window.location.origin);
+    return url.pathname + url.search;
+}
+
+function resolveErrorMessage(status, data) {
+    if (status === 401) return 'Sesi login sudah berakhir. Silakan login ulang.';
+    if (status === 403) return 'Anda tidak memiliki akses untuk melakukan aksi ini.';
+    if (status === 419) return 'Sesi sudah tidak valid. Silakan refresh halaman lalu coba lagi.';
+    if (status === 429) return 'Terlalu banyak percobaan. Tunggu sebentar lalu coba lagi.';
+    if (status >= 500) return 'Terjadi kesalahan di server. Coba lagi nanti.';
+
+    const firstError = Object.values(data?.errors ?? {}).flat()[0];
+    return firstError ?? data?.message ?? 'Terjadi kesalahan saat menyimpan.';
+}
+
+function labelFor(code) {
+    return props.items.find((item) => item.code === code)?.name ?? code;
+}
+
+function formatWeight(weight) {
+    return Number(weight).toFixed(4);
 }
 
 async function handleSubmit() {
+    if (loading.value) return;
+
     errorMessage.value = null;
     result.value = null;
 
-    const csrfToken = getCsrfToken();
-    if (!csrfToken) {
+    const csrf = getCsrfHeader();
+    if (!csrf) {
         errorMessage.value = 'Token keamanan (CSRF) tidak ditemukan. Silakan refresh halaman lalu coba lagi.';
         return;
     }
@@ -128,14 +165,14 @@ async function handleSubmit() {
     loading.value = true;
 
     try {
-        const res = await fetch(props.submitUrl, {
+        const res = await fetch(resolveEndpoint(), {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
                 'X-Requested-With': 'XMLHttpRequest',
+                [csrf.name]: csrf.value,
             },
             body: JSON.stringify({
                 matrix: matrix.value,
@@ -143,23 +180,17 @@ async function handleSubmit() {
             }),
         });
 
-        if (res.status === 419) {
-            errorMessage.value = 'Sesi login sudah tidak valid. Silakan refresh halaman lalu coba lagi.';
-            return;
-        }
-
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
 
         if (!res.ok) {
-            errorMessage.value = data.errors?.matrix?.[0] ?? data.message ?? 'Terjadi kesalahan saat menyimpan.';
-            result.value = data.ahp_preview ?? null;
+            errorMessage.value = resolveErrorMessage(res.status, data);
+            result.value = data?.ahp_preview ?? null;
             return;
         }
 
-        result.value = data.ahp_result ?? null;
+        result.value = data?.ahp_result ?? null;
         emit('saved', result.value);
     } catch (error) {
-        console.error('Error saat submit:', error);
         errorMessage.value = 'Terjadi kesalahan jaringan. Coba lagi.';
     } finally {
         loading.value = false;
@@ -221,7 +252,7 @@ async function handleSubmit() {
             <p class="font-medium text-teal-800 mb-2">Hasil perhitungan:</p>
             <ul class="space-y-1 text-teal-700">
                 <li v-for="(weight, code) in result.weights" :key="code">
-                    {{ code }}: {{ weight }}
+                    {{ labelFor(code) }} ({{ code }}): {{ formatWeight(weight) }}
                 </li>
             </ul>
             <p class="mt-2 text-teal-700">

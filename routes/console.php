@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 
 Schedule::command('consultations:revert-overdue')->hourly();
+Schedule::command('consultations:auto-complete')->hourly()->withoutOverlapping();
