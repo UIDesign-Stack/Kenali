@@ -1,7 +1,9 @@
 <script setup>
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+
+const DEFAULT_SCORE = 3;
 
 const props = defineProps({
     alternative: { type: Object, required: true },
@@ -9,23 +11,42 @@ const props = defineProps({
     existingScores: { type: [Object, Array], required: true },
 });
 
-const hasExistingProfile = Object.keys(props.existingScores ?? {}).length > 0;
-
 const scores = reactive({});
+const touched = reactive({});
+
 props.criteria.forEach((crit) => {
     crit.sub_criteria.forEach((sub) => {
-        scores[sub.id] = props.existingScores[sub.id] ? Number(props.existingScores[sub.id]) : 3;
+        const existing = props.existingScores?.[sub.id];
+        const hasValue = existing !== undefined && existing !== null;
+
+        scores[sub.id] = hasValue ? Number(existing) : DEFAULT_SCORE;
+        touched[sub.id] = hasValue;
     });
 });
 
+const untouchedCount = computed(() => Object.values(touched).filter((value) => !value).length);
+
 const saving = ref(false);
 const errorMessage = ref('');
+
+function markTouched(subCriteriaId) {
+    touched[subCriteriaId] = true;
+}
 
 function submit() {
     if (saving.value) return;
 
     if (!props.criteria.length) {
         errorMessage.value = 'Tidak ada kriteria untuk disimpan.';
+        return;
+    }
+
+    if (
+        untouchedCount.value > 0 &&
+        !confirm(
+            `${untouchedCount.value} sub-kriteria masih memakai nilai awal ${DEFAULT_SCORE} yang belum Anda atur. Tetap simpan?`
+        )
+    ) {
         return;
     }
 
@@ -75,10 +96,11 @@ function submit() {
             </div>
 
             <p
-                v-if="!hasExistingProfile"
+                v-if="untouchedCount > 0"
                 class="mb-6 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
             >
-                Profil ini belum pernah diisi. Semua slider diawali di nilai 3, geser sesuai profil ideal sebelum menyimpan.
+                {{ untouchedCount }} sub-kriteria belum diatur dan masih bernilai awal {{ DEFAULT_SCORE }}.
+                Geser slider sesuai profil ideal sebelum menyimpan.
             </p>
 
             <form @submit.prevent="submit" class="space-y-10">
@@ -93,7 +115,10 @@ function submit() {
                                 <label :for="`sub-${sub.id}`" class="text-sm font-medium text-gray-700">
                                     {{ sub.name }}
                                 </label>
-                                <span class="text-sm font-semibold text-teal-600">{{ scores[sub.id] }}</span>
+                                <span class="text-sm font-semibold text-teal-600">
+                                    {{ scores[sub.id] }}
+                                    <span v-if="!touched[sub.id]" class="ml-1 text-[10px] font-normal text-amber-600">belum diatur</span>
+                                </span>
                             </div>
                             <input
                                 :id="`sub-${sub.id}`"
@@ -102,9 +127,9 @@ function submit() {
                                 min="1"
                                 max="5"
                                 step="1"
-                                :aria-label="sub.name"
                                 :aria-valuetext="`${scores[sub.id]} dari 5`"
                                 class="w-full accent-teal-600"
+                                @input="markTouched(sub.id)"
                             />
                             <div class="flex justify-between text-[10px] text-gray-400 mt-1">
                                 <span>1 · Sangat rendah</span>

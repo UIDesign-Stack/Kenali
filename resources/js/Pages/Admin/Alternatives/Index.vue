@@ -14,24 +14,33 @@ const page = usePage();
 const processingId = ref(null);
 const processingAction = ref(null);
 
+function isBusy(alt) {
+    return processingId.value === alt.id;
+}
+
 function isProcessing(alt, action) {
-    return processingId.value === alt.id && processingAction.value === action;
+    return isBusy(alt) && processingAction.value === action;
+}
+
+function finishProcessing() {
+    processingId.value = null;
+    processingAction.value = null;
 }
 
 function toggleActive(alternative) {
+    if (isBusy(alternative)) return;
+
     processingId.value = alternative.id;
     processingAction.value = 'toggle';
 
     router.patch(route('admin.alternatives.toggle-active', alternative.id), {}, {
         preserveScroll: true,
-        onFinish: () => {
-            processingId.value = null;
-            processingAction.value = null;
-        },
+        onFinish: finishProcessing,
     });
 }
 
 function destroyAlternative(alternative) {
+    if (isBusy(alternative)) return;
     if (! confirm(`Yakin ingin menghapus "${alternative.name}"?`)) return;
 
     processingId.value = alternative.id;
@@ -39,10 +48,7 @@ function destroyAlternative(alternative) {
 
     router.delete(route('admin.alternatives.destroy', alternative.id), {
         preserveScroll: true,
-        onFinish: () => {
-            processingId.value = null;
-            processingAction.value = null;
-        },
+        onFinish: finishProcessing,
     });
 }
 </script>
@@ -68,7 +74,7 @@ function destroyAlternative(alternative) {
                 {{ page.props.flash.success }}
             </div>
 
-            <div v-if="page.props.errors?.alternative" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm">
+            <div v-if="page.props.errors?.alternative" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
                 {{ page.props.errors.alternative }}
             </div>
 
@@ -77,10 +83,10 @@ function destroyAlternative(alternative) {
                     v-for="alt in alternatives"
                     :key="alt.id"
                     class="p-4 border border-gray-200 rounded-lg"
-                    :class="{ 'opacity-50 bg-gray-50': !alt.is_active }"
+                    :class="{ 'bg-gray-50': !alt.is_active }"
                 >
                     <div class="flex items-start justify-between gap-4">
-                        <div class="flex-1">
+                        <div class="flex-1" :class="{ 'opacity-50': !alt.is_active }">
                             <div class="flex items-center gap-2">
                                 <h3 class="text-sm font-semibold text-gray-800">{{ alt.name }}</h3>
                                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
@@ -114,16 +120,18 @@ function destroyAlternative(alternative) {
                                 Edit
                             </Link>
                             <button
+                                type="button"
                                 @click="toggleActive(alt)"
-                                :disabled="isProcessing(alt, 'toggle') || (!alt.is_active && alt.profiles_count < totalSubCriteria)"
+                                :disabled="isBusy(alt) || (!alt.is_active && alt.profiles_count < totalSubCriteria)"
                                 :title="!alt.is_active && alt.profiles_count < totalSubCriteria ? 'Lengkapi profil ideal dulu' : ''"
                                 class="text-gray-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {{ isProcessing(alt, 'toggle') ? '...' : (alt.is_active ? 'Nonaktifkan' : 'Aktifkan') }}
                             </button>
                             <button
+                                type="button"
                                 @click="destroyAlternative(alt)"
-                                :disabled="isProcessing(alt, 'destroy')"
+                                :disabled="isBusy(alt)"
                                 class="text-gray-500 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {{ isProcessing(alt, 'destroy') ? 'Menghapus...' : 'Hapus' }}

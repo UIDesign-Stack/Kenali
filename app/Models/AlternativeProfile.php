@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AlternativeProfile extends Model
 {
@@ -22,12 +23,12 @@ class AlternativeProfile extends Model
         ];
     }
 
-    public function alternative()
+    public function alternative(): BelongsTo
     {
         return $this->belongsTo(Alternative::class);
     }
 
-    public function subCriteria()
+    public function subCriteria(): BelongsTo
     {
         return $this->belongsTo(SubCriteria::class);
     }

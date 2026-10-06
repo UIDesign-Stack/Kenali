@@ -8,12 +8,11 @@ use App\Models\Alternative;
 use App\Models\AlternativeProfile;
 use App\Models\Criteria;
 use Illuminate\Support\Facades\DB;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class AlternativeProfileController extends Controller
 {
-
     public function edit(Alternative $alternative)
     {
         $criteria = Criteria::select('id', 'code', 'name', 'order')
@@ -38,22 +37,23 @@ class AlternativeProfileController extends Controller
         $rows = collect($request->validated('scores'))
             ->map(fn (array $score) => [
                 'alternative_id'  => $alternative->id,
-                'sub_criteria_id' => $score['sub_criteria_id'],
+                'sub_criteria_id' => (int) $score['sub_criteria_id'],
                 'ideal_score'     => $score['ideal_score'],
                 'created_at'      => $now,
                 'updated_at'      => $now,
             ])
             ->all();
 
-        Log::info('Profil ideal alternatif diubah', [
-            'alternative_id' => $alternative->id,
-            'admin_id'       => $request->user()->id,
-            'old'            => $alternative->profiles()->pluck('ideal_score', 'sub_criteria_id')->all(),
-            'new'            => collect($rows)->pluck('ideal_score', 'sub_criteria_id')->all(),
-        ]);
+        $newScores = collect($rows)
+            ->pluck('ideal_score', 'sub_criteria_id')
+            ->map(fn ($value) => (float) $value);
 
-        DB::transaction(function () use ($alternative, $rows) {
-            Alternative::whereKey($alternative->id)->lockForUpdate()->first();
+        $audit = DB::transaction(function () use ($alternative, $rows, $newScores) {
+            Alternative::whereKey($alternative->id)->lockForUpdate()->firstOrFail();
+
+            $oldScores = AlternativeProfile::where('alternative_id', $alternative->id)
+                ->pluck('ideal_score', 'sub_criteria_id')
+                ->map(fn ($value) => (float) $value);
 
             AlternativeProfile::upsert(
                 $rows,
@@ -62,9 +62,26 @@ class AlternativeProfileController extends Controller
             );
 
             AlternativeProfile::where('alternative_id', $alternative->id)
-                ->whereNotIn('sub_criteria_id', collect($rows)->pluck('sub_criteria_id'))
+                ->whereNotIn('sub_criteria_id', $newScores->keys()->all())
                 ->delete();
+
+            return [
+                'changed' => $newScores
+                    ->filter(fn ($score, $id) => ! $oldScores->has($id) || abs($oldScores[$id] - $score) > 0.0001)
+                    ->map(fn ($score, $id) => ['old' => $oldScores->get($id), 'new' => $score])
+                    ->all(),
+                'removed' => $oldScores->keys()->diff($newScores->keys())->values()->all(),
+            ];
         });
+
+        if ($audit['changed'] !== [] || $audit['removed'] !== []) {
+            Log::info('Profil ideal alternatif diubah', [
+                'alternative_id' => $alternative->id,
+                'admin_id'       => $request->user()->id,
+                'changed'        => $audit['changed'],
+                'removed'        => $audit['removed'],
+            ]);
+        }
 
         return redirect()
             ->route('admin.alternatives.index')
