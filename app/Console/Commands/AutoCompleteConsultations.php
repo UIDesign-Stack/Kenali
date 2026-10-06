@@ -46,7 +46,7 @@ class AutoCompleteConsultations extends Command
 
             if ($last->lte($closeCutoff)) {
                 $closed += $this->close($c->id) ? 1 : 0;
-            } elseif ($this->warn_once($c->id)) {
+            } elseif ($this->warn_once($c->id, $last)) {
                 $warned++;
             }
         }
@@ -56,15 +56,16 @@ class AutoCompleteConsultations extends Command
         return self::SUCCESS;
     }
 
-    private function warn_once(int $id): bool
+    private function warn_once(int $id, \Illuminate\Support\Carbon $last): bool
     {
         $c = Consultation::with('user', 'psychologistProfile.user')->find($id);
 
-        // Hindari peringatan berulang tiap jam
+        // Hanya peringatan yang dikirim SETELAH aktivitas terakhir yang dianggap sudah terkirim
         $already = $c->user->notifications()
             ->where('type', ConsultationStatusUpdated::class)
             ->where('data->consultation_id', $c->id)
             ->where('data->title', 'Konsultasi akan ditutup otomatis')
+            ->where('created_at', '>', $last)
             ->exists();
 
         if ($already) {
