@@ -1,11 +1,14 @@
 <script setup>
+import { ref } from 'vue';
 import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
-const props = defineProps({
+defineProps({
     psychologistProfile: { type: Object, required: true },
     consultations: { type: Array, required: true },
 });
+
+const MAX_REASON_LENGTH = 1000;
 
 const statusLabel = {
     pending: 'Menunggu respon',
@@ -26,21 +29,38 @@ const typeLabel = {
     tatap_muka: 'Tatap Muka Langsung',
 };
 
+const cancellingId = ref(null);
+
 function canForceCancel(consultation) {
     return ['pending', 'scheduled'].includes(consultation.status);
 }
 
 function forceCancel(consultation) {
+    if (cancellingId.value !== null) return;
+
     const reason = prompt(
         'PERINGATAN: Ini akan membatalkan konsultasi ini atas nama admin, bukan psikolog.\n' +
         'Gunakan hanya untuk kondisi darurat (psikolog tidak bisa login sendiri).\n\n' +
+        'Alasan ini akan terlihat oleh user dan psikolog yang bersangkutan.\n\n' +
         'Masukkan alasan pembatalan:'
     );
     if (!reason || !reason.trim()) return;
 
+    const trimmed = reason.trim();
+
+    if (trimmed.length > MAX_REASON_LENGTH) {
+        alert(`Alasan terlalu panjang (${trimmed.length} karakter). Maksimal ${MAX_REASON_LENGTH} karakter.`);
+        return;
+    }
+
+    cancellingId.value = consultation.id;
+
     router.patch(route('admin.consultations.force-cancel', consultation.id), {
-        cancelled_reason: reason.trim(),
-    }, { preserveScroll: true });
+        cancelled_reason: trimmed,
+    }, {
+        preserveScroll: true,
+        onFinish: () => (cancellingId.value = null),
+    });
 }
 </script>
 
@@ -70,8 +90,12 @@ function forceCancel(consultation) {
                 {{ $page.props.flash.success }}
             </div>
 
-            <div v-if="$page.props.errors?.consultation" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
-                {{ $page.props.errors.consultation }}
+            <div
+                v-if="$page.props.errors?.consultation || $page.props.errors?.cancelled_reason"
+                class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm"
+                role="alert"
+            >
+                {{ $page.props.errors.consultation ?? $page.props.errors.cancelled_reason }}
             </div>
 
             <div class="space-y-3">
@@ -90,10 +114,12 @@ function forceCancel(consultation) {
 
                     <button
                         v-if="canForceCancel(c)"
+                        type="button"
                         @click="forceCancel(c)"
-                        class="text-xs text-red-600 hover:text-red-800"
+                        :disabled="cancellingId !== null"
+                        class="text-xs text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Batalkan Paksa (Darurat)
+                        {{ cancellingId === c.id ? 'Membatalkan…' : 'Batalkan Paksa (Darurat)' }}
                     </button>
                     <p v-if="c.status === 'cancelled' && c.cancelled_reason" class="text-xs text-gray-400 mt-1">
                         Alasan: {{ c.cancelled_reason }}

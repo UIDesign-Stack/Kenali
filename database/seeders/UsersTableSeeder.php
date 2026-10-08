@@ -13,7 +13,13 @@ class UsersTableSeeder extends Seeder
      */
     public function run(): void
     {
-        // admin
+
+        if (app()->environment('production')) {
+            $this->command->error('UsersTableSeeder tidak dijalankan di production. Buat akun admin secara manual dengan password acak.');
+
+            return;
+        }
+
         $admin = User::firstOrCreate(
             ['email' => 'admin@kenali.com'],
             [
@@ -31,7 +37,6 @@ class UsersTableSeeder extends Seeder
         $this->command->warn($admin->email);
         $this->command->warn('Password is "kenali123"');
 
-        // psikolog
         $psikolog = User::firstOrCreate(
             ['email' => 'psikolog@kenali.com'],
             [
@@ -47,18 +52,21 @@ class UsersTableSeeder extends Seeder
         }
 
         if (! $psikolog->psychologistProfile) {
-            $psikolog->psychologistProfile()->create([
+            $profile = $psikolog->psychologistProfile()->make([
                 'license_number' => 'STR-0001-2026',
                 'specialization' => 'Psikolog Pendidikan',
-                'is_verified'    => true,
             ]);
+
+            $profile->forceFill([
+                'is_verified'  => true,
+                'is_available' => true,
+            ])->save();
         }
 
         $this->command->info('>_ Here is your psikolog details to login:');
         $this->command->warn($psikolog->email);
         $this->command->warn('Password is "kenali123"');
 
-        // user
         $user = User::firstOrCreate(
             ['email' => 'user@kenali.com'],
             [

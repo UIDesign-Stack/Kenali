@@ -1,21 +1,67 @@
 <script setup>
-import { router, Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 defineProps({
     psychologists: { type: Array, required: true },
 });
 
+const processingId = ref(null);
+const processingAction = ref(null);
+
+function isBusy(psych) {
+    return processingId.value === psych.id;
+}
+
+function isProcessing(psych, action) {
+    return isBusy(psych) && processingAction.value === action;
+}
+
+function finishProcessing() {
+    processingId.value = null;
+    processingAction.value = null;
+}
+
+function run(psych, action, url) {
+    processingId.value = psych.id;
+    processingAction.value = action;
+
+    router.patch(url, {}, {
+        preserveScroll: true,
+        onFinish: finishProcessing,
+    });
+}
+
 function toggleVerified(psych) {
-    router.patch(route('admin.psychologists.toggle-verified', psych.id), {}, { preserveScroll: true });
+    if (isBusy(psych)) return;
+
+    const message = psych.is_verified
+        ? `Batalkan verifikasi ${psych.user.name}?`
+        : `Verifikasi ${psych.user.name}? Pastikan nomor lisensi sudah Anda periksa. Psikolog akan menerima notifikasi.`;
+
+    if (!confirm(message)) return;
+
+    run(psych, 'verified', route('admin.psychologists.toggle-verified', psych.id));
 }
 
 function toggleAvailable(psych) {
-    router.patch(route('admin.psychologists.toggle-available', psych.id), {}, { preserveScroll: true });
+    if (isBusy(psych)) return;
+
+    if (
+        psych.is_available &&
+        !confirm(`Nonaktifkan ketersediaan ${psych.user.name}? User tidak akan bisa membuat konsultasi baru dengannya.`)
+    ) {
+        return;
+    }
+
+    run(psych, 'available', route('admin.psychologists.toggle-available', psych.id));
 }
 </script>
 
 <template>
+    <Head title="Manajemen Psikolog" />
+
     <AuthenticatedLayout>
         <template #header>
             <div class="flex items-center justify-between">
@@ -37,6 +83,7 @@ function toggleAvailable(psych) {
             <div v-if="$page.props.errors?.psychologist" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
                 {{ $page.props.errors.psychologist }}
             </div>
+
             <div class="space-y-3">
                 <div
                     v-for="psych in psychologists"
@@ -45,13 +92,25 @@ function toggleAvailable(psych) {
                 >
                     <div class="flex items-start justify-between">
                         <div>
-                            <div class="flex items-center gap-2 mb-0.5">
+                            <div class="flex flex-wrap items-center gap-2 mb-0.5">
                                 <span class="text-sm font-semibold text-gray-800">{{ psych.user.name }}</span>
                                 <span
                                     class="text-[10px] px-2 py-0.5 rounded-full"
                                     :class="psych.is_verified ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
                                 >
                                     {{ psych.is_verified ? 'Terverifikasi' : 'Belum diverifikasi' }}
+                                </span>
+                                <span
+                                    class="text-[10px] px-2 py-0.5 rounded-full"
+                                    :class="psych.is_available ? 'bg-gray-100 text-gray-600' : 'bg-red-100 text-red-700'"
+                                >
+                                    {{ psych.is_available ? 'Tersedia' : 'Tidak tersedia' }}
+                                </span>
+                                <span
+                                    v-if="!psych.user.is_active"
+                                    class="text-[10px] px-2 py-0.5 rounded-full bg-red-100 text-red-700"
+                                >
+                                    Akun nonaktif
                                 </span>
                             </div>
                             <p class="text-xs text-gray-400">{{ psych.user.email }}</p>
@@ -77,19 +136,23 @@ function toggleAvailable(psych) {
                                 Ulasan ({{ psych.rating_count }})
                             </Link>
                             <button
+                                type="button"
                                 @click="toggleVerified(psych)"
-                                class="text-xs px-3 py-1.5 rounded-md"
+                                :disabled="isBusy(psych)"
+                                class="text-xs px-3 py-1.5 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
                                 :class="psych.is_verified
                                     ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                     : 'bg-teal-600 text-white hover:bg-teal-700'"
                             >
-                                {{ psych.is_verified ? 'Batalkan Verifikasi' : 'Verifikasi' }}
+                                {{ isProcessing(psych, 'verified') ? '...' : (psych.is_verified ? 'Batalkan Verifikasi' : 'Verifikasi') }}
                             </button>
                             <button
+                                type="button"
                                 @click="toggleAvailable(psych)"
-                                class="text-xs text-gray-500 hover:text-amber-600"
+                                :disabled="isBusy(psych)"
+                                class="text-xs text-gray-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {{ psych.is_available ? 'Nonaktifkan ketersediaan' : 'Aktifkan ketersediaan' }}
+                                {{ isProcessing(psych, 'available') ? '...' : (psych.is_available ? 'Nonaktifkan ketersediaan' : 'Aktifkan ketersediaan') }}
                             </button>
                         </div>
                     </div>

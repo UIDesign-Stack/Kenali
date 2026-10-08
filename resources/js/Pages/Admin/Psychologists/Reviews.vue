@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue';
 import { router, Link, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import StarRating from '@/Components/StarRating.vue';
@@ -8,6 +9,32 @@ defineProps({
     reviews: { type: Array, required: true },
 });
 
+const processingId = ref(null);
+const processingAction = ref(null);
+
+function isBusy(review) {
+    return processingId.value === review.id;
+}
+
+function isProcessing(review, action) {
+    return isBusy(review) && processingAction.value === action;
+}
+
+function finishProcessing() {
+    processingId.value = null;
+    processingAction.value = null;
+}
+
+function run(review, action, url) {
+    processingId.value = review.id;
+    processingAction.value = action;
+
+    router.patch(url, {}, {
+        preserveScroll: true,
+        onFinish: finishProcessing,
+    });
+}
+
 function formatDate(dateStr) {
     return new Date(dateStr).toLocaleString('id-ID', {
         day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -15,15 +42,25 @@ function formatDate(dateStr) {
 }
 
 function toggleHidden(review) {
+    if (isBusy(review)) return;
+
     const msg = review.is_hidden
         ? 'Tampilkan kembali ulasan ini?'
         : 'Sembunyikan ulasan ini? Rating psikolog akan dihitung ulang.';
     if (!confirm(msg)) return;
-    router.patch(route('admin.reviews.toggle-hidden', review.id), {}, { preserveScroll: true });
+
+    run(review, 'review', route('admin.reviews.toggle-hidden', review.id));
 }
 
 function toggleReplyHidden(review) {
-    router.patch(route('admin.reviews.toggle-reply-hidden', review.id), {}, { preserveScroll: true });
+    if (isBusy(review)) return;
+
+    const msg = review.reply_hidden
+        ? 'Tampilkan kembali balasan psikolog ini?'
+        : 'Sembunyikan balasan psikolog ini?';
+    if (!confirm(msg)) return;
+
+    run(review, 'reply', route('admin.reviews.toggle-reply-hidden', review.id));
 }
 </script>
 
@@ -77,13 +114,23 @@ function toggleReplyHidden(review) {
                             <span v-if="r.reply_hidden" class="text-gray-400">(disembunyikan)</span>
                         </p>
                         <p class="text-sm text-gray-600 whitespace-pre-line">{{ r.reply }}</p>
-                        <button type="button" @click="toggleReplyHidden(r)" class="mt-1 text-xs text-gray-500 hover:text-amber-600">
-                            {{ r.reply_hidden ? 'Tampilkan balasan' : 'Sembunyikan balasan' }}
+                        <button
+                            type="button"
+                            @click="toggleReplyHidden(r)"
+                            :disabled="isBusy(r)"
+                            class="mt-1 text-xs text-gray-500 hover:text-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {{ isProcessing(r, 'reply') ? '...' : (r.reply_hidden ? 'Tampilkan balasan' : 'Sembunyikan balasan') }}
                         </button>
                     </div>
 
-                    <button type="button" @click="toggleHidden(r)" class="mt-3 text-xs text-gray-500 hover:text-red-600">
-                        {{ r.is_hidden ? 'Tampilkan ulasan' : 'Sembunyikan ulasan' }}
+                    <button
+                        type="button"
+                        @click="toggleHidden(r)"
+                        :disabled="isBusy(r)"
+                        class="mt-3 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {{ isProcessing(r, 'review') ? '...' : (r.is_hidden ? 'Tampilkan ulasan' : 'Sembunyikan ulasan') }}
                     </button>
                 </div>
 
