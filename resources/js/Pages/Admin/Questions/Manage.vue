@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { router, Link, useForm, Head, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
@@ -8,13 +8,26 @@ const props = defineProps({
     questions: { type: Array, required: true },
 });
 
+
+const MIN_LENGTH = 5;
+const MAX_LENGTH = 1000;
+
 const page = usePage();
+
+// supaya pesan lama tidak menempel setelah aksi lain berhasil.
+const actionError = ref('');
 
 const newQuestionForm = useForm({
     question_text: '',
 });
 
+const canSubmitNew = computed(() => newQuestionForm.question_text.trim().length >= MIN_LENGTH);
+
 function submitNewQuestion() {
+    if (!canSubmitNew.value) return;
+
+    actionError.value = '';
+
     newQuestionForm.post(route('admin.questions.store', props.subCriteria.id), {
         preserveScroll: true,
         onSuccess: () => newQuestionForm.reset(),
@@ -30,6 +43,7 @@ function startEdit(question) {
     editingId.value = question.id;
     editText.value = question.question_text;
     editError.value = '';
+    actionError.value = '';
 }
 
 function cancelEdit() {
@@ -39,8 +53,10 @@ function cancelEdit() {
 }
 
 function saveEdit(question) {
-    if (!editText.value.trim()) {
-        editError.value = 'Teks soal tidak boleh kosong.';
+    const text = editText.value.trim();
+
+    if (text.length < MIN_LENGTH) {
+        editError.value = `Teks soal minimal ${MIN_LENGTH} karakter.`;
         return;
     }
 
@@ -48,7 +64,7 @@ function saveEdit(question) {
     editError.value = '';
 
     router.patch(route('admin.questions.update', question.id), {
-        question_text: editText.value.trim(),
+        question_text: text,
     }, {
         preserveScroll: true,
         onSuccess: () => cancelEdit(),
@@ -61,35 +77,36 @@ function saveEdit(question) {
 
 const togglingId = ref(null);
 const destroyingId = ref(null);
-const destroyError = ref('');
-const toggleError = ref('');
+
+
+const rowActionRunning = computed(() => togglingId.value !== null || destroyingId.value !== null);
 
 function toggleActive(question) {
-    if (togglingId.value) return;
+    if (rowActionRunning.value) return;
 
     togglingId.value = question.id;
-    toggleError.value = '';
+    actionError.value = '';
+
     router.patch(route('admin.questions.toggle-active', question.id), {}, {
         preserveScroll: true,
         onError: (errors) => {
-            toggleError.value = errors.question || 'Gagal mengubah status soal.';
+            actionError.value = errors.question || 'Gagal mengubah status soal.';
         },
         onFinish: () => (togglingId.value = null),
     });
 }
 
 function destroyQuestion(question) {
-    if (destroyingId.value) return;
+    if (rowActionRunning.value) return;
     if (!confirm('Yakin ingin menghapus soal ini?')) return;
 
     destroyingId.value = question.id;
-    destroyError.value = '';
+    actionError.value = '';
 
     router.delete(route('admin.questions.destroy', question.id), {
         preserveScroll: true,
-        onSuccess: () => (destroyError.value = ''),
         onError: (errors) => {
-            destroyError.value = errors.question || 'Gagal menghapus soal.';
+            actionError.value = errors.question || 'Gagal menghapus soal.';
         },
         onFinish: () => (destroyingId.value = null),
     });
@@ -116,15 +133,10 @@ function destroyQuestion(question) {
                 {{ page.props.flash.success }}
             </div>
 
-            <div v-if="destroyError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
-                {{ destroyError }}
+            <div v-if="actionError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
+                {{ actionError }}
             </div>
 
-            <div v-if="toggleError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
-                {{ toggleError }}
-            </div>
-
-            <!-- Form tambah soal -->
             <form @submit.prevent="submitNewQuestion" class="mb-8 p-4 border border-gray-200 rounded-lg">
                 <label for="new-question" class="block text-sm font-medium text-gray-700 mb-2">
                     Tambah soal baru
@@ -133,16 +145,18 @@ function destroyQuestion(question) {
                     id="new-question"
                     v-model="newQuestionForm.question_text"
                     rows="2"
-                    maxlength="1000"
+                    :maxlength="MAX_LENGTH"
                     placeholder="Contoh: Saya senang menganalisis data untuk menemukan pola tertentu."
                     class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
+                    :aria-invalid="!!newQuestionForm.errors.question_text"
+                    aria-describedby="new-question-error"
                 ></textarea>
-                <p v-if="newQuestionForm.errors.question_text" class="text-xs text-red-600 mt-1">
+                <p v-if="newQuestionForm.errors.question_text" id="new-question-error" class="text-xs text-red-600 mt-1" role="alert">
                     {{ newQuestionForm.errors.question_text }}
                 </p>
                 <button
                     type="submit"
-                    :disabled="newQuestionForm.processing || !newQuestionForm.question_text.trim()"
+                    :disabled="newQuestionForm.processing || !canSubmitNew"
                     class="mt-3 px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                 >
                     {{ newQuestionForm.processing ? 'Menyimpan…' : 'Tambah Soal' }}
@@ -155,20 +169,22 @@ function destroyQuestion(question) {
                     v-for="(question, index) in questions"
                     :key="question.id"
                     class="p-4 border border-gray-200 rounded-lg"
-                    :class="{ 'opacity-50 bg-gray-50': !question.is_active }"
+                    :class="{ 'bg-gray-50': !question.is_active }"
                 >
                     <div v-if="editingId === question.id">
                         <textarea
                             v-model="editText"
                             rows="2"
-                            maxlength="1000"
+                            :maxlength="MAX_LENGTH"
+                            aria-label="Teks soal"
                             class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                         ></textarea>
-                        <p v-if="editError" class="text-xs text-red-600 mt-1">
+                        <p v-if="editError" class="text-xs text-red-600 mt-1" role="alert">
                             {{ editError }}
                         </p>
                         <div class="flex gap-2 mt-2">
                             <button
+                                type="button"
                                 @click="saveEdit(question)"
                                 :disabled="editSaving"
                                 class="px-3 py-1.5 rounded-md bg-teal-600 text-white text-xs font-medium disabled:opacity-40 hover:bg-teal-700"
@@ -176,6 +192,7 @@ function destroyQuestion(question) {
                                 {{ editSaving ? 'Menyimpan…' : 'Simpan' }}
                             </button>
                             <button
+                                type="button"
                                 @click="cancelEdit"
                                 :disabled="editSaving"
                                 class="px-3 py-1.5 rounded-md bg-gray-100 text-gray-600 text-xs font-medium disabled:opacity-40 hover:bg-gray-200"
@@ -186,7 +203,8 @@ function destroyQuestion(question) {
                     </div>
 
                     <div v-else class="flex items-start justify-between gap-4">
-                        <div class="flex-1">
+
+                        <div class="flex-1" :class="{ 'opacity-50': !question.is_active }">
                             <span class="text-xs text-gray-400">Soal #{{ index + 1 }}</span>
                             <p class="text-sm text-gray-700 mt-0.5">{{ question.question_text }}</p>
                             <span
@@ -199,21 +217,25 @@ function destroyQuestion(question) {
 
                         <div class="flex gap-2 shrink-0">
                             <button
+                                type="button"
                                 @click="startEdit(question)"
-                                class="text-xs text-gray-500 hover:text-teal-600"
+                                :disabled="rowActionRunning"
+                                class="text-xs text-gray-500 hover:text-teal-600 disabled:opacity-40"
                             >
                                 Edit
                             </button>
                             <button
+                                type="button"
                                 @click="toggleActive(question)"
-                                :disabled="togglingId === question.id"
+                                :disabled="rowActionRunning"
                                 class="text-xs text-gray-500 hover:text-amber-600 disabled:opacity-40"
                             >
                                 {{ togglingId === question.id ? '...' : (question.is_active ? 'Nonaktifkan' : 'Aktifkan') }}
                             </button>
                             <button
+                                type="button"
                                 @click="destroyQuestion(question)"
-                                :disabled="destroyingId === question.id"
+                                :disabled="rowActionRunning"
                                 class="text-xs text-gray-500 hover:text-red-600 disabled:opacity-40"
                             >
                                 {{ destroyingId === question.id ? 'Menghapus…' : 'Hapus' }}

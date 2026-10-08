@@ -5,6 +5,10 @@ import { Link, Head } from '@inertiajs/vue3';
 defineProps({
     criteria: { type: Array, required: true },
 });
+
+function activeCount(sub) {
+    return sub.active_questions_count ?? sub.questions_count;
+}
 </script>
 
 <template>
@@ -20,10 +24,6 @@ defineProps({
                 Belum ada kriteria yang tersedia.
             </div>
 
-            <!-- v-for dipindah ke <template> terpisah dari v-else, bukan
-                 digabung di satu elemen yang sama (Vue style guide
-                 menyarankan tidak mencampur v-for dengan direktif
-                 kondisional pada node yang sama). -->
             <template v-else>
                 <div v-for="crit in criteria" :key="crit.id">
                     <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -44,12 +44,17 @@ defineProps({
                             <span class="text-sm font-medium text-gray-700">{{ sub.name }}</span>
                             <span
                                 class="text-xs px-2 py-1 rounded-full"
-                                :class="sub.questions_count > 0
+                                :class="activeCount(sub) > 0
                                     ? 'bg-teal-100 text-teal-700'
                                     : 'bg-amber-100 text-amber-700'"
-                                :aria-label="`${sub.questions_count} soal tersedia`"
                             >
                                 {{ sub.questions_count }} soal
+                                <template v-if="activeCount(sub) !== sub.questions_count">
+                                    · {{ activeCount(sub) }} aktif
+                                </template>
+                                <template v-if="activeCount(sub) === 0">
+                                    · belum bisa dipakai di tes
+                                </template>
                             </span>
                         </Link>
                     </div>

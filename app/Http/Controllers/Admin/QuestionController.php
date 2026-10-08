@@ -8,6 +8,7 @@ use App\Models\Question;
 use App\Models\SubCriteria;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class QuestionController extends Controller
@@ -15,7 +16,10 @@ class QuestionController extends Controller
     public function index()
     {
         $criteria = Criteria::with([
-            'subCriteria' => fn ($q) => $q->withCount('questions')->orderBy('order'),
+            'subCriteria' => fn ($q) => $q->withCount([
+                'questions',
+                'questions as active_questions_count' => fn ($q) => $q->where('is_active', true),
+            ])->orderBy('order'),
         ])->orderBy('order')->get();
 
         return Inertia::render('Admin/Questions/Index', [
@@ -44,18 +48,27 @@ class QuestionController extends Controller
             'question_text' => ['required', 'string', 'min:5', 'max:1000'],
         ]);
 
-        DB::transaction(function () use ($validated, $subCriteria) {
-            // Kunci baris induk, supaya dua admin yang menambah soal bersamaan tidak mendapat order yang sama
-            SubCriteria::whereKey($subCriteria->id)->lockForUpdate()->first();
+        $question = DB::transaction(function () use ($validated, $subCriteria) {
+
+            SubCriteria::whereKey($subCriteria->id)->lockForUpdate()->firstOrFail();
 
             $maxOrder = $subCriteria->questions()->max('order') ?? 0;
 
-            $subCriteria->questions()->create([
-                'question_text' => $validated['question_text'],
-                'order'         => $maxOrder + 1,
-                'is_active'     => true,
-            ]);
+            $question = new Question();
+            $question->sub_criteria_id = $subCriteria->id;
+            $question->question_text   = $validated['question_text'];
+            $question->order           = $maxOrder + 1;
+            $question->is_active       = true;
+            $question->save();
+
+            return $question;
         });
+
+        Log::info('Soal ditambahkan', [
+            'question_id'     => $question->id,
+            'sub_criteria_id' => $subCriteria->id,
+            'admin_id'        => $request->user()->id,
+        ]);
 
         return back()->with('success', 'Soal berhasil ditambahkan.');
     }
@@ -66,36 +79,54 @@ class QuestionController extends Controller
             'question_text' => ['required', 'string', 'min:5', 'max:1000'],
         ]);
 
-        if ($question->question_text !== $validated['question_text'] && $question->answers()->exists()) {
+        $result = DB::transaction(function () use ($question, $validated) {
+
+            $locked = Question::whereKey($question->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->question_text === $validated['question_text']) {
+                return 'unchanged';
+            }
+
+            if ($locked->answers()->exists()) {
+                return 'has_answers';
+            }
+
+            $locked->question_text = $validated['question_text'];
+            $locked->save();
+
+            return 'updated';
+        });
+
+        if ($result === 'has_answers') {
             return back()->withErrors([
                 'question_text' => 'Soal ini sudah pernah dijawab. Nonaktifkan lalu buat soal baru agar hasil tes lama tetap valid.',
             ]);
         }
 
-        $question->update($validated);
+        if ($result === 'updated') {
+            Log::info('Teks soal diperbarui', [
+                'question_id' => $question->id,
+                'admin_id'    => $request->user()->id,
+            ]);
+        }
 
         return back()->with('success', 'Soal berhasil diperbarui.');
     }
 
-    public function toggleActive(Question $question)
+    public function toggleActive(Request $request, Question $question)
     {
         $isActive = DB::transaction(function () use ($question) {
-            SubCriteria::whereKey($question->sub_criteria_id)->lockForUpdate()->first();
-            $question->refresh();
 
-            if ($question->is_active) {
-                $activeCount = Question::where('sub_criteria_id', $question->sub_criteria_id)
-                    ->where('is_active', true)
-                    ->count();
+            SubCriteria::whereKey($question->sub_criteria_id)->lockForUpdate()->firstOrFail();
+            $locked = Question::whereKey($question->id)->lockForUpdate()->firstOrFail();
 
-                if ($activeCount <= 1) {
-                    return null;
-                }
+            if ($locked->is_active && $this->activeQuestionCount($locked->sub_criteria_id) <= 1) {
+                return null;
             }
 
-            $question->update(['is_active' => ! $question->is_active]);
+            $locked->forceFill(['is_active' => ! $locked->is_active])->save();
 
-            return (bool) $question->is_active;
+            return (bool) $locked->is_active;
         });
 
         if ($isActive === null) {
@@ -104,30 +135,61 @@ class QuestionController extends Controller
             ]);
         }
 
+        Log::info('Status soal diubah', [
+            'question_id' => $question->id,
+            'admin_id'    => $request->user()->id,
+            'is_active'   => $isActive,
+        ]);
+
         return back()->with('success', $isActive
             ? 'Soal berhasil diaktifkan.'
             : 'Soal berhasil dinonaktifkan.');
     }
 
-    public function destroy(Question $question)
+    public function destroy(Request $request, Question $question)
     {
-        $deleted = DB::transaction(function () use ($question) {
+        $result = DB::transaction(function () use ($question) {
+            SubCriteria::whereKey($question->sub_criteria_id)->lockForUpdate()->firstOrFail();
             $locked = Question::whereKey($question->id)->lockForUpdate()->first();
 
-            if (! $locked || $locked->answers()->exists()) {
-                return false;
+            if (! $locked) {
+                return 'not_found';
+            }
+
+            if ($locked->answers()->exists()) {
+                return 'has_answers';
+            }
+
+            if ($locked->is_active && $this->activeQuestionCount($locked->sub_criteria_id) <= 1) {
+                return 'last_active';
             }
 
             $locked->delete();
 
-            return true;
+            return 'deleted';
         });
 
-        if (! $deleted) {
+        if ($result === 'has_answers') {
             return back()->withErrors([
                 'question' => 'Soal ini tidak bisa dihapus karena sudah pernah dijawab user. Nonaktifkan saja soal ini.',
             ]);
         }
+
+        if ($result === 'last_active') {
+            return back()->withErrors([
+                'question' => 'Setiap sub-kriteria harus punya minimal satu soal aktif. Tambah soal aktif lain dulu sebelum menghapus soal ini.',
+            ]);
+        }
+
+        if ($result === 'not_found') {
+            return back()->withErrors(['question' => 'Soal tidak ditemukan.']);
+        }
+
+        Log::info('Soal dihapus', [
+            'question_id'     => $question->id,
+            'sub_criteria_id' => $question->sub_criteria_id,
+            'admin_id'        => $request->user()->id,
+        ]);
 
         return back()->with('success', 'Soal berhasil dihapus.');
     }
@@ -142,9 +204,11 @@ class QuestionController extends Controller
         $ids = array_map('intval', array_values($validated['question_ids']));
 
         $ok = DB::transaction(function () use ($ids, $subCriteria) {
+
+            SubCriteria::whereKey($subCriteria->id)->lockForUpdate()->firstOrFail();
+
             $ownedIds = $subCriteria->questions()->lockForUpdate()->pluck('id')->all();
 
-            // Harus berisi semua soal milik sub-kriteria ini, tidak kurang, tidak lebih
             if (count($ids) !== count($ownedIds)
                 || array_diff($ids, $ownedIds)
                 || array_diff($ownedIds, $ids)) {
@@ -155,8 +219,7 @@ class QuestionController extends Controller
                 ->map(fn ($id, $index) => "WHEN {$id} THEN ".($index + 1))
                 ->implode(' ');
 
-            DB::table('questions')
-                ->where('sub_criteria_id', $subCriteria->id)
+            Question::where('sub_criteria_id', $subCriteria->id)
                 ->whereIn('id', $ids)
                 ->update(['order' => DB::raw("CASE id {$caseStatements} END")]);
 
@@ -169,6 +232,18 @@ class QuestionController extends Controller
             ]);
         }
 
+        Log::info('Urutan soal diubah', [
+            'sub_criteria_id' => $subCriteria->id,
+            'admin_id'        => $request->user()->id,
+        ]);
+
         return back()->with('success', 'Urutan soal diperbarui.');
+    }
+
+    protected function activeQuestionCount(int $subCriteriaId): int
+    {
+        return Question::where('sub_criteria_id', $subCriteriaId)
+            ->where('is_active', true)
+            ->count();
     }
 }
