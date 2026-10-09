@@ -12,6 +12,8 @@ class ConsultationStatusChanged implements ShouldBroadcastNow
 {
     use InteractsWithSockets, SerializesModels;
 
+    public bool $afterCommit = true;
+
     public function __construct(public Consultation $consultation) {}
 
     public function broadcastOn(): array
@@ -28,7 +30,6 @@ class ConsultationStatusChanged implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
-
         return [
             'consultation_id' => $this->consultation->id,
             'status'          => $this->consultation->status,
