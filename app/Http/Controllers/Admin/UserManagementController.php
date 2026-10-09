@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\ConsultationStatus;
 use App\Enums\LifePhase;
 use App\Http\Controllers\Controller;
+use App\Models\PsychologistProfile;
 use App\Models\User;
 use App\Notifications\AccountStatusChanged;
 use App\Notifications\StaffAccountCreated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
@@ -19,6 +22,8 @@ use Spatie\Permission\Models\Role;
 
 class UserManagementController extends Controller
 {
+    private const ASSIGNABLE_ROLES = ['admin', 'psikolog', 'user'];
+
     public function index(Request $request)
     {
         $search = $request->string('search')->trim()->toString();
@@ -75,36 +80,47 @@ class UserManagementController extends Controller
         $validated = $request->validate([
             'name'     => ['required', 'string', 'max:255'],
             'email'    => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+
+            'password' => ['required', 'confirmed', Rules\Password::min(12)->mixedCase()->numbers()],
             'role'     => ['required', 'in:admin,psikolog'],
 
-            'license_number' => ['required_if:role,psikolog', 'nullable', 'string', 'max:255'],
+            'license_number' => ['required_if:role,psikolog', 'nullable', 'string', 'max:255', 'unique:psychologist_profiles,license_number'],
             'specialization' => ['required_if:role,psikolog', 'nullable', 'string', 'max:255'],
         ]);
 
         $user = DB::transaction(function () use ($validated) {
-            $user = User::create([
+            $user = new User();
+            $user->forceFill([
                 'name'              => $validated['name'],
                 'email'             => $validated['email'],
                 'password'          => Hash::make($validated['password']),
                 'email_verified_at' => now(),
-            ]);
+            ])->save();
 
             $user->assignRole($validated['role']);
 
             if ($validated['role'] === 'psikolog') {
-                $user->psychologistProfile()->create([
+                $profile = $user->psychologistProfile()->make([
                     'license_number' => $validated['license_number'],
                     'specialization' => $validated['specialization'],
-                    'is_verified'    => true,
-                    'is_available'   => true,
                 ]);
+
+                $profile->forceFill([
+                    'is_verified'  => true,
+                    'is_available' => true,
+                ])->save();
             }
 
             return $user;
         });
 
-        $user->notify(new StaffAccountCreated($validated['role']));
+        Log::info('Akun staf dibuat', [
+            'new_user_id' => $user->id,
+            'role'        => $validated['role'],
+            'admin_id'    => $request->user()->id,
+        ]);
+
+        rescue(fn () => $user->notify(new StaffAccountCreated($validated['role'])));
 
         return redirect()->route('admin.users.index')
             ->with('success', "Akun {$validated['role']} untuk {$user->name} berhasil dibuat.");
@@ -116,7 +132,7 @@ class UserManagementController extends Controller
 
         return Inertia::render('Admin/Users/Edit', [
             'user'             => $user,
-            'roles'            => Role::pluck('name'),
+            'roles'            => Role::whereIn('name', self::ASSIGNABLE_ROLES)->pluck('name'),
             'lifePhaseOptions' => LifePhase::assignableToUserOptions(),
         ]);
     }
@@ -128,7 +144,7 @@ class UserManagementController extends Controller
             'email'      => ['required', 'string', 'lowercase', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone'      => ['nullable', 'string', 'max:20'],
             'life_phase' => ['nullable', Rule::in(LifePhase::assignableToUserValues())],
-            'role'       => ['required', Rule::in(Role::pluck('name'))],
+            'role'       => ['required', Rule::in(self::ASSIGNABLE_ROLES)],
         ]);
 
         if ($user->id === $request->user()->id && $validated['role'] !== 'admin') {
@@ -137,23 +153,76 @@ class UserManagementController extends Controller
             ]);
         }
 
-        $wasPsikolog = $user->hasRole('psikolog');
-        $willStayPsikolog = $validated['role'] === 'psikolog';
+        $wasPsikolog      = $user->hasRole('psikolog');
+        $willBePsikolog   = $validated['role'] === 'psikolog';
+        $oldRole          = $user->getRoleNames()->first();
 
-        if ($wasPsikolog && ! $willStayPsikolog && $this->hasActiveConsultationAsPsychologist($user)) {
+        if ($willBePsikolog && ! $wasPsikolog && ! $user->psychologistProfile) {
+            return back()->withErrors([
+                'role' => 'Role psikolog hanya bisa diberikan lewat menu "Tambah Psikolog Baru" karena membutuhkan data lisensi dan spesialisasi.',
+            ]);
+        }
+
+        $actorId = $request->user()->id;
+
+        $outcome = DB::transaction(function () use ($user, $validated, $wasPsikolog, $willBePsikolog, $actorId) {
+            $locked = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
+
+            if ($wasPsikolog && ! $willBePsikolog) {
+                $profile = PsychologistProfile::where('user_id', $locked->id)->lockForUpdate()->first();
+
+                if ($profile) {
+                    $hasActive = $profile->consultations()
+                        ->whereIn('status', ConsultationStatus::activeStatusValues())
+                        ->exists();
+
+                    if ($hasActive) {
+                        return ['status' => 'has_active_consultation'];
+                    }
+
+                    $profile->forceFill(['is_verified' => false, 'is_available' => false])->save();
+                }
+            }
+
+            $locked->fill([
+                'name'       => $validated['name'],
+                'email'      => $validated['email'],
+                'phone'      => $validated['phone'] ?? null,
+                'life_phase' => $validated['life_phase'] ?? null,
+            ]);
+
+            $changed = array_keys($locked->getDirty());
+
+            $emailReset = in_array('email', $changed, true) && $locked->id !== $actorId;
+
+            if ($emailReset) {
+                $locked->email_verified_at = null;
+            }
+
+            $locked->save();
+
+            $locked->syncRoles([$validated['role']]);
+
+            return ['status' => 'ok', 'changed' => $changed, 'email_reset' => $emailReset];
+        });
+
+        if ($outcome['status'] === 'has_active_consultation') {
             return back()->withErrors([
                 'role' => 'Tidak bisa mengubah role: psikolog ini masih memiliki konsultasi yang sedang berjalan.',
             ]);
         }
 
-        $user->update([
-            'name'       => $validated['name'],
-            'email'      => $validated['email'],
-            'phone'      => $validated['phone'] ?? null,
-            'life_phase' => $validated['life_phase'] ?? null,
-        ]);
+        if ($outcome['email_reset']) {
+            rescue(fn () => $user->refresh()->sendEmailVerificationNotification());
+        }
 
-        $user->syncRoles([$validated['role']]);
+        Log::info('Data user diperbarui oleh admin', [
+            'user_id'        => $user->id,
+            'admin_id'       => $request->user()->id,
+            'changed_fields' => $outcome['changed'],
+            'old_role'       => $oldRole,
+            'new_role'       => $validated['role'],
+        ]);
 
         return redirect()->route('admin.users.show', $user->id)
             ->with('success', "Data {$user->name} berhasil diperbarui.");
@@ -167,26 +236,63 @@ class UserManagementController extends Controller
             ]);
         }
 
-        $isDeactivating = $user->is_active;
+        $isActive = DB::transaction(function () use ($user) {
+            $locked = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
 
-        if ($isDeactivating && $this->hasActiveConsultation($user)) {
+            if ($locked->is_active && $this->hasActiveConsultation($locked)) {
+                return null;
+            }
+
+            $newState = ! $locked->is_active;
+
+
+            $locked->forceFill(['is_active' => $newState])->save();
+
+            if (! $newState) {
+
+                $locked->forceFill(['remember_token' => Str::random(60)])->save();
+
+                if (config('session.driver') === 'database') {
+                    DB::table(config('session.table', 'sessions'))
+                        ->where('user_id', $locked->id)
+                        ->delete();
+                }
+
+                $profile = PsychologistProfile::where('user_id', $locked->id)->lockForUpdate()->first();
+                $profile?->forceFill(['is_available' => false])->save();
+            }
+
+            return $newState;
+        });
+
+        if ($isActive === null) {
             return back()->withErrors([
                 'user' => "Akun {$user->name} tidak bisa dinonaktifkan karena masih memiliki konsultasi yang sedang berjalan.",
             ]);
         }
 
-        $user->update(['is_active' => ! $user->is_active]);
+        Log::info('Status akun diubah oleh admin', [
+            'user_id'   => $user->id,
+            'admin_id'  => $request->user()->id,
+            'is_active' => $isActive,
+        ]);
 
-        $user->notify(new AccountStatusChanged($user->is_active));
+        rescue(fn () => $user->refresh()->notify(new AccountStatusChanged($isActive)));
 
-        return back()->with('success', $user->is_active
+        return back()->with('success', $isActive
             ? "Akun {$user->name} diaktifkan kembali."
             : "Akun {$user->name} dinonaktifkan.");
     }
 
-    public function resetPassword(User $user)
+    public function resetPassword(Request $request, User $user)
     {
         $status = Password::sendResetLink(['email' => $user->email]);
+
+        Log::info('Link reset password dikirim oleh admin', [
+            'user_id'  => $user->id,
+            'admin_id' => $request->user()->id,
+            'status'   => $status,
+        ]);
 
         return $status === Password::RESET_LINK_SENT
             ? back()->with('success', "Link reset password telah dikirim ke {$user->email}.")
