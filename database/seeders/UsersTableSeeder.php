@@ -29,6 +29,8 @@ class UsersTableSeeder extends Seeder
             ]
         );
 
+        $this->markVerified($admin);
+
         if (! $admin->hasRole('admin')) {
             $admin->assignRole('admin');
         }
@@ -46,6 +48,8 @@ class UsersTableSeeder extends Seeder
                 'phone'             => '081234567890',
             ]
         );
+
+        $this->markVerified($psikolog);
 
         if (! $psikolog->hasRole('psikolog')) {
             $psikolog->assignRole('psikolog');
@@ -78,6 +82,8 @@ class UsersTableSeeder extends Seeder
             ]
         );
 
+        $this->markVerified($user);
+
         if (! $user->hasRole('user')) {
             $user->assignRole('user');
         }
@@ -88,5 +94,16 @@ class UsersTableSeeder extends Seeder
 
         // bersihkan cache
         $this->command->call('cache:clear');
+    }
+
+    /**
+     * email_verified_at tidak ada di $fillable User, jadi nilai yang dikirim lewat
+     * firstOrCreate([...]) dibuang diam-diam. Diisi di sini lewat forceFill.
+     */
+    private function markVerified(User $user): void
+    {
+        if ($user->email_verified_at === null) {
+            $user->forceFill(['email_verified_at' => now()])->save();
+        }
     }
 }
