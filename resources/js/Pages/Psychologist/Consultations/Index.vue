@@ -21,12 +21,18 @@ const statusColor = {
     cancelled: 'bg-gray-200 text-gray-500',
 };
 
-// Tipe konsultasi final: cuma 'chat' dan 'tatap_muka' (permintaan pertemuan
-// langsung). 'video_call' sempat ada tapi sudah dihapus dari sistem.
+
 const typeLabel = {
     chat: 'Chat',
     tatap_muka: 'Tatap Muka Langsung',
 };
+
+function formatDateTime(dateStr) {
+    return new Date(dateStr).toLocaleString('id-ID', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+}
 </script>
 
 <template>
@@ -49,6 +55,7 @@ const typeLabel = {
                     · {{ profile.rating_count }} ulasan
                 </span>
             </Link>
+
             <div v-if="consultations.length === 0" class="text-center py-16 text-sm text-gray-400">
                 Belum ada permintaan konsultasi.
             </div>
@@ -58,7 +65,8 @@ const typeLabel = {
                     v-for="c in consultations"
                     :key="c.id"
                     :href="route('psikolog.consultations.show', c.id)"
-                    class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition">
+                    class="block p-4 border border-gray-200 rounded-lg hover:border-teal-300 transition"
+                >
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-semibold text-gray-800">{{ c.user.name }}</span>
                         <span class="text-[10px] px-2 py-0.5 rounded-full" :class="statusColor[c.status] ?? 'bg-gray-100 text-gray-500'">
@@ -66,6 +74,9 @@ const typeLabel = {
                         </span>
                     </div>
                     <p class="text-xs text-gray-400">{{ typeLabel[c.type] ?? c.type }}</p>
+                    <p v-if="c.status === 'scheduled' && c.scheduled_at" class="text-xs text-gray-600 mt-1">
+                        Jadwal: {{ formatDateTime(c.scheduled_at) }}
+                    </p>
                 </Link>
             </div>
         </div>
