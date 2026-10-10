@@ -1,11 +1,12 @@
 <script setup>
+import { computed } from 'vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 
 defineProps({
     canResetPassword: {
@@ -16,11 +17,15 @@ defineProps({
     },
 });
 
+const page = usePage();
+
 const form = useForm({
     email: '',
     password: '',
     remember: false,
 });
+
+const emailError = computed(() => form.errors.email || page.props.errors?.email);
 
 const submit = () => {
     form.post(route('login'), {
@@ -51,7 +56,7 @@ const submit = () => {
                     autocomplete="username"
                 />
 
-                <InputError class="mt-2" :message="form.errors.email" />
+                <InputError class="mt-2" :message="emailError" />
             </div>
 
             <div class="mt-4">
