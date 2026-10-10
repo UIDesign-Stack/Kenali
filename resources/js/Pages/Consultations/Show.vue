@@ -12,6 +12,9 @@ const props = defineProps({
     closesAt: { type: String, default: null },
 });
 
+
+const MAX_MESSAGE_LENGTH = 2000;
+
 const messages = ref([...props.consultation.messages]);
 const newMessage = ref('');
 const sending = ref(false);
@@ -39,8 +42,31 @@ const typeLabel = {
     tatap_muka: 'Tatap Muka Langsung',
 };
 
-function csrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+/**
+ * Token CSRF untuk request fetch. Cookie XSRF-TOKEN diprioritaskan karena diperbarui di setiap
+ * response (sama seperti cara Inertia/axios bekerja); meta tag dipakai sebagai cadangan.
+ * Token di meta tag bisa basi setelah navigasi tanpa muat ulang halaman penuh (mis. logout lalu
+ * login lagi), dan request fetch akan ditolak 419.
+ */
+function csrfHeaders() {
+    const cookie = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    if (cookie) {
+        return { 'X-XSRF-TOKEN': decodeURIComponent(cookie[1]) };
+    }
+
+    const meta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    return meta ? { 'X-CSRF-TOKEN': meta } : {};
+}
+
+const socketId = () => window.Echo?.socketId?.() ?? '';
+
+function describeError(status, data) {
+    if (status === 401) return 'Sesi login sudah berakhir. Silakan login ulang.';
+    if (status === 419) return 'Sesi sudah tidak valid. Muat ulang halaman lalu coba lagi.';
+    if (status === 429) return 'Terlalu banyak pesan dalam waktu singkat. Tunggu sebentar lalu coba lagi.';
+    if (status >= 500) return 'Terjadi kesalahan di server. Coba lagi nanti.';
+
+    return data?.errors?.message?.[0] ?? data?.message ?? 'Pesan gagal terkirim. Coba lagi.';
 }
 
 function scrollToBottom() {
@@ -95,11 +121,12 @@ async function markIncomingAsRead() {
     try {
         const res = await fetch(route('consultations.read', props.consultation.id), {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken(),
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-Socket-ID': window.Echo.socketId() ?? '',
+                'X-Socket-ID': socketId(),
+                ...csrfHeaders(),
             },
         });
 
@@ -111,7 +138,7 @@ async function markIncomingAsRead() {
             window.dispatchEvent(new CustomEvent('notifications:refresh'));
         }
     } catch (e) {
-        console.error('Gagal menandai pesan dibaca:', e);
+
     } finally {
         markingRead = false;
         if (markAgain) {
@@ -136,7 +163,11 @@ function handleTyping() {
 }
 
 async function sendMessage() {
-    if (!newMessage.value.trim()) return;
+
+    if (sending.value) return;
+
+    const text = newMessage.value.trim();
+    if (!text) return;
 
     sending.value = true;
     sendError.value = null;
@@ -144,14 +175,15 @@ async function sendMessage() {
     try {
         const res = await fetch(route('consultations.messages.send', props.consultation.id), {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken(),
                 'X-Requested-With': 'XMLHttpRequest',
-                'X-Socket-ID': window.Echo.socketId() ?? '',
+                'X-Socket-ID': socketId(),
+                ...csrfHeaders(),
             },
-            body: JSON.stringify({ message: newMessage.value }),
+            body: JSON.stringify({ message: text }),
         });
 
         if (res.ok) {
@@ -163,11 +195,8 @@ async function sendMessage() {
         }
 
         const errorData = await res.json().catch(() => null);
-        sendError.value = errorData?.message
-            ?? errorData?.errors?.message?.[0]
-            ?? 'Pesan gagal terkirim. Coba lagi.';
+        sendError.value = describeError(res.status, errorData);
     } catch (e) {
-        console.error('Gagal kirim pesan:', e);
         sendError.value = 'Terjadi kesalahan jaringan. Coba lagi.';
     } finally {
         sending.value = false;
@@ -179,31 +208,33 @@ const channelName = `consultation.${props.consultation.id}`;
 onMounted(() => {
     scrollToBottom();
 
-    echoChannel = window.Echo.private(channelName);
+    if (window.Echo) {
+        echoChannel = window.Echo.private(channelName);
 
-    echoChannel
-        .listen('.status.changed', () => {
-            router.reload({ only: ['consultation', 'reviewEditable', 'closesAt'], preserveScroll: true });
-        })
-        .listen('.message.sent', (e) => {
-            pushIfNew(e);
-            refreshClosesAt();
-            if (e.sender.id !== myId) markIncomingAsRead();
-        })
-        .listen('.messages.read', (e) => {
-            if (e.reader_id === myId) return;
+        echoChannel
+            .listen('.status.changed', () => {
+                router.reload({ only: ['consultation', 'reviewEditable', 'closesAt'], preserveScroll: true });
+            })
+            .listen('.message.sent', (e) => {
+                pushIfNew(e);
+                refreshClosesAt();
+                if (e.sender.id !== myId) markIncomingAsRead();
+            })
+            .listen('.messages.read', (e) => {
+                if (e.reader_id === myId) return;
 
-            messages.value.forEach((m) => {
-                if (isMine(m) && !m.read_at) m.read_at = e.read_at;
+                messages.value.forEach((m) => {
+                    if (isMine(m) && !m.read_at) m.read_at = e.read_at;
+                });
+            })
+            .listenForWhisper('typing', () => {
+                otherPartyTyping.value = true;
+                clearTimeout(typingHideTimeout);
+                typingHideTimeout = setTimeout(() => {
+                    otherPartyTyping.value = false;
+                }, 3000);
             });
-        })
-        .listenForWhisper('typing', () => {
-            otherPartyTyping.value = true;
-            clearTimeout(typingHideTimeout);
-            typingHideTimeout = setTimeout(() => {
-                otherPartyTyping.value = false;
-            }, 3000);
-        });
+    }
 
     document.addEventListener('visibilitychange', onVisibilityChange);
     markIncomingAsRead();
@@ -212,7 +243,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     clearTimeout(typingHideTimeout);
     document.removeEventListener('visibilitychange', onVisibilityChange);
-    window.Echo.leave(channelName);
+    window.Echo?.leave(channelName);
 });
 </script>
 
@@ -282,7 +313,7 @@ onBeforeUnmount(() => {
                             ? 'ml-auto bg-teal-600 text-white'
                             : 'bg-gray-100 text-gray-700'"
                     >
-                        <p>{{ msg.message }}</p>
+                        <p class="whitespace-pre-line break-words">{{ msg.message }}</p>
                         <div
                             class="mt-1 flex items-center justify-end gap-1 text-[10px]"
                             :class="isMine(msg) ? 'text-teal-100' : 'text-gray-400'"
@@ -313,10 +344,13 @@ onBeforeUnmount(() => {
                         @input="handleTyping"
                         @keyup.enter="sendMessage"
                         type="text"
+                        :maxlength="MAX_MESSAGE_LENGTH"
+                        aria-label="Tulis pesan"
                         placeholder="Tulis pesan…"
                         class="flex-1 rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     />
                     <button
+                        type="button"
                         @click="sendMessage"
                         :disabled="sending || !newMessage.trim()"
                         class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"

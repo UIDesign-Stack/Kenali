@@ -6,7 +6,7 @@ import StarRating from '@/Components/StarRating.vue';
 const props = defineProps({
     psychologists: { type: Array, required: true },
     completedSessions: { type: Array, required: true },
-    // Dikirim dari ConsultationController::create().
+
     lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
@@ -17,11 +17,9 @@ const form = useForm({
     notes: '',
 });
 
-// Backend mengirim result.topDetail (rank teratas), BUKAN result.details[0].
-// Relasi `details` sengaja di-unset di ConsultationController::create()
-// setelah topDetail dihitung, jadi jangan akses session.result.details lagi.
 function topAlternativeName(session) {
-    return session.result?.topDetail?.alternative?.name ?? null;
+    const top = session.result?.topDetail ?? session.result?.top_detail;
+    return top?.alternative?.name ?? null;
 }
 
 function lifePhaseLabel(session) {
@@ -97,7 +95,7 @@ function submit() {
                     <p v-if="psychologists.length === 0" class="text-sm text-gray-400">
                         Belum ada psikolog yang tersedia saat ini.
                     </p>
-                    <p v-if="form.errors.psychologist_profile_id" class="text-xs text-red-600 mt-1">
+                    <p v-if="form.errors.psychologist_profile_id" class="text-xs text-red-600 mt-1" role="alert">
                         {{ form.errors.psychologist_profile_id }}
                     </p>
                 </fieldset>
@@ -109,6 +107,7 @@ function submit() {
                     <select
                         id="test_session_id"
                         v-model="form.test_session_id"
+                        aria-describedby="test-session-note"
                         class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     >
                         <option value="">Tidak dikaitkan</option>
@@ -116,7 +115,10 @@ function submit() {
                             {{ lifePhaseLabel(session) }} — {{ topAlternativeName(session) ?? 'hasil belum ada' }}
                         </option>
                     </select>
-                    <p v-if="form.errors.test_session_id" class="text-xs text-red-600 mt-1">
+                    <p id="test-session-note" class="text-xs text-gray-500 mt-1">
+                        Kalau dipilih, psikolog yang kamu pilih dapat melihat hasil tes ini.
+                    </p>
+                    <p v-if="form.errors.test_session_id" class="text-xs text-red-600 mt-1" role="alert">
                         {{ form.errors.test_session_id }}
                     </p>
                 </div>
@@ -131,7 +133,7 @@ function submit() {
                         <option value="chat">Chat</option>
                         <option value="tatap_muka">Tatap Muka Langsung</option>
                     </select>
-                    <p v-if="form.errors.type" class="text-xs text-red-600 mt-1">{{ form.errors.type }}</p>
+                    <p v-if="form.errors.type" class="text-xs text-red-600 mt-1" role="alert">{{ form.errors.type }}</p>
                 </div>
 
                 <div>
@@ -143,11 +145,15 @@ function submit() {
                         v-model="form.notes"
                         rows="4"
                         maxlength="1000"
+                        aria-describedby="notes-note"
                         placeholder="Contoh: Saya masih bingung memilih antara dua bidang dari hasil tes saya."
                         class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     ></textarea>
+                    <p id="notes-note" class="text-xs text-gray-500 mt-1">
+                        Catatan ini dibaca psikolog yang kamu pilih. Tulis seperlunya saja.
+                    </p>
                     <div class="flex justify-between items-center mt-1">
-                        <p v-if="form.errors.notes" class="text-xs text-red-600">{{ form.errors.notes }}</p>
+                        <p v-if="form.errors.notes" class="text-xs text-red-600" role="alert">{{ form.errors.notes }}</p>
                         <p class="text-[10px] text-gray-400 ml-auto">{{ form.notes.length }}/1000</p>
                     </div>
                 </div>
