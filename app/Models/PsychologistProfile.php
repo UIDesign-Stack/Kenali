@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PsychologistProfile extends Model
 {
@@ -16,30 +18,30 @@ class PsychologistProfile extends Model
         'bio',
         'photo',
         'years_of_experience',
-        'is_available',
-        'is_verified',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_verified'  => 'boolean',
-            'is_available' => 'boolean',
-            'rating_avg'   => 'float',
-            'rating_count' => 'integer',
+            'is_verified'         => 'boolean',
+            'is_available'        => 'boolean',
+            'rating_avg'          => 'float',
+            'rating_count'        => 'integer',
+            'years_of_experience' => 'integer',
         ];
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function consultations()
+    public function consultations(): HasMany
     {
         return $this->hasMany(Consultation::class);
     }
-    public function reviews()
+
+    public function reviews(): HasMany
     {
         return $this->hasMany(ConsultationReview::class);
     }
