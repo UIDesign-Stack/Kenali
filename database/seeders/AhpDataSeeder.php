@@ -27,6 +27,10 @@ class AhpDataSeeder extends Seeder
             ahpService: $ahpService,
             order: ['minat', 'bakat', 'kepribadian'],
             onResult: function ($result) use ($admin) {
+                // Seeder bisa dijalankan ulang: bobot lama dinonaktifkan dulu, supaya hanya baris
+                // terbaru per kriteria yang aktif (aturan yang sama dengan AhpController).
+                CriteriaWeight::where('is_active', true)->update(['is_active' => false]);
+
                 foreach ($result['weights'] as $code => $weight) {
                     $criteria = Criteria::where('code', $code)->first();
                     if (! $criteria) continue;
@@ -116,6 +120,7 @@ class AhpDataSeeder extends Seeder
 
     protected function saveSubCriteriaWeights(array $result): void
     {
+        // Query update langsung (bukan $model->update): local_weight sengaja tidak mass-assignable.
         foreach ($result['weights'] as $code => $weight) {
             SubCriteria::where('code', $code)->update(['local_weight' => $weight]);
         }
