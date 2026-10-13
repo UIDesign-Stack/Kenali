@@ -8,6 +8,7 @@ class StoreReviewRequest extends FormRequest
 {
     public function authorize(): bool
     {
+
         return $this->user()?->hasRole('user') ?? false;
     }
 
@@ -15,11 +16,18 @@ class StoreReviewRequest extends FormRequest
     {
         $comment = $this->input('comment');
 
-        $this->merge([
-            'comment' => is_string($comment)
-                ? (trim(preg_replace('/[ \t]+/u', ' ', $comment)) ?: null)
-                : null,
-        ]);
+        $normalized = null;
+
+        if (is_string($comment)) {
+
+            $collapsed = preg_replace('/[ \t]+/u', ' ', $comment);
+
+            if (is_string($collapsed)) {
+                $normalized = trim($collapsed) ?: null;
+            }
+        }
+
+        $this->merge(['comment' => $normalized]);
     }
 
     public function rules(): array

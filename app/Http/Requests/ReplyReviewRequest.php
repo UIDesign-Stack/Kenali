@@ -8,6 +8,7 @@ class ReplyReviewRequest extends FormRequest
 {
     public function authorize(): bool
     {
+
         return $this->user()?->hasRole('psikolog') ?? false;
     }
 
@@ -15,11 +16,18 @@ class ReplyReviewRequest extends FormRequest
     {
         $reply = $this->input('reply');
 
-        $this->merge([
-            'reply' => is_string($reply)
-                ? trim(preg_replace('/[ \t]+/u', ' ', $reply))
-                : null,
-        ]);
+        $normalized = null;
+
+        if (is_string($reply)) {
+
+            $collapsed = preg_replace('/[ \t]+/u', ' ', $reply);
+
+            if (is_string($collapsed)) {
+                $normalized = trim($collapsed);
+            }
+        }
+
+        $this->merge(['reply' => $normalized]);
     }
 
     public function rules(): array

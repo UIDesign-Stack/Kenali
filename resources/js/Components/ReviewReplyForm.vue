@@ -8,19 +8,45 @@ const props = defineProps({
     editable: { type: Boolean, default: false },
 });
 
+const MAX_REPLY_LENGTH = 500;
+const MIN_REPLY_LENGTH = 3;
+
 const form = useForm({ reply: props.review.reply ?? '' });
 const editing = ref(false);
 const hasReply = computed(() => !!props.review.reply);
 const showForm = computed(() => (!hasReply.value && props.editable) || editing.value);
+const canSubmit = computed(() => !form.processing && form.reply.trim().length >= MIN_REPLY_LENGTH);
 
-watch(() => props.review, (r) => {
-    editing.value = false;
-    form.reply = r.reply ?? '';
+
+watch(
+    () => [
+        props.review.id,
+        props.review.reply,
+        props.review.replied_at,
+        props.review.reply_hidden,
+        props.review.is_hidden,
+    ].join('|'),
+    () => {
+        editing.value = false;
+        form.reply = props.review.reply ?? '';
+        form.clearErrors();
+    }
+);
+
+function startEdit() {
+    form.reply = props.review.reply ?? '';
     form.clearErrors();
-});
+    editing.value = true;
+}
+
+function cancelEdit() {
+    editing.value = false;
+    form.reply = props.review.reply ?? '';
+    form.clearErrors();
+}
 
 function submit() {
-    if (form.processing || form.reply.trim().length < 3) return;
+    if (!canSubmit.value) return;
     form.patch(route('psikolog.reviews.reply', props.review.id), { preserveScroll: true });
 }
 </script>
@@ -42,7 +68,7 @@ function submit() {
                 <div v-if="hasReply && !editing && !review.reply_hidden">
                     <p class="text-xs font-medium text-gray-500 mb-1">Balasanmu</p>
                     <p class="text-sm text-gray-700 whitespace-pre-line">{{ review.reply }}</p>
-                    <button v-if="editable" type="button" @click="editing = true" class="mt-2 text-sm text-teal-600 hover:underline">
+                    <button v-if="editable" type="button" @click="startEdit" class="mt-2 text-sm text-teal-600 hover:underline">
                         Ubah balasan
                     </button>
                 </div>
@@ -55,11 +81,12 @@ function submit() {
                     <textarea
                         v-model="form.reply"
                         rows="3"
-                        maxlength="500"
+                        :maxlength="MAX_REPLY_LENGTH"
+                        aria-label="Balasan untuk ulasan"
                         placeholder="Tulis balasan singkat dan profesional"
                         class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                     ></textarea>
-                    <p v-if="form.errors.reply" class="text-xs text-red-600">{{ form.errors.reply }}</p>
+                    <p v-if="form.errors.reply" class="text-xs text-red-600" role="alert">{{ form.errors.reply }}</p>
                     <p v-if="$page.props.errors?.review" class="text-xs text-red-600" role="alert">{{ $page.props.errors.review }}</p>
                     <p class="text-[11px] text-amber-700 bg-amber-50 rounded-md px-3 py-2">
                         Balasan tampil ke publik. Jangan menyebut detail atau isi sesi konsultasi.
@@ -67,12 +94,12 @@ function submit() {
                     <div class="flex items-center gap-3">
                         <button
                             type="submit"
-                            :disabled="form.processing || form.reply.trim().length < 3"
+                            :disabled="!canSubmit"
                             class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
                         >
                             {{ form.processing ? 'Menyimpan…' : 'Kirim Balasan' }}
                         </button>
-                        <button v-if="editing" type="button" @click="editing = false" class="text-sm text-gray-500">Batal</button>
+                        <button v-if="editing" type="button" @click="cancelEdit" class="text-sm text-gray-500">Batal</button>
                     </div>
                 </form>
 

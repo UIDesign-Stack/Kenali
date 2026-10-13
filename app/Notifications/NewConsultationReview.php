@@ -5,7 +5,6 @@ namespace App\Notifications;
 use App\Models\ConsultationReview;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Str;
 
 class NewConsultationReview extends Notification
 {
@@ -20,15 +19,15 @@ class NewConsultationReview extends Notification
 
     public function toArray(object $notifiable): array
     {
-        $stars = str_repeat('★', $this->review->rating).str_repeat('☆', 5 - $this->review->rating);
+
+        $rating = max(1, min(5, (int) $this->review->rating));
+        $stars  = str_repeat('★', $rating).str_repeat('☆', 5 - $rating);
 
         return [
-            'title'     => 'Ulasan baru dari pasien',
-            'body'      => $this->review->comment
-                ? $stars.' · '.Str::limit($this->review->comment, 60)
-                : $stars,
+            'title' => 'Ulasan baru dari pasien',
+            'body'      => $stars.' · Buka konsultasi untuk membaca ulasan.',
             'review_id' => $this->review->id,
-            'url'       => route('psikolog.consultations.show', $this->review->consultation_id),
+            'url'       => route('psikolog.consultations.show', $this->review->consultation_id, false),
         ];
     }
 }

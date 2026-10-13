@@ -19,13 +19,15 @@ const editing = ref(false);
 const showForm = computed(() => !isEdit.value || editing.value);
 const canSubmit = computed(() => form.rating >= 1 && !form.processing);
 
-// Saat ulasan tersimpan/berubah dari server, tutup mode ubah dan sinkronkan nilai
-watch(() => props.review, (r) => {
-    editing.value = false;
-    form.rating = r?.rating ?? 0;
-    form.comment = r?.comment ?? '';
-    form.clearErrors();
-});
+watch(
+    () => `${props.review?.id ?? ''}:${props.review?.updated_at ?? ''}`,
+    () => {
+        editing.value = false;
+        form.rating = props.review?.rating ?? 0;
+        form.comment = props.review?.comment ?? '';
+        form.clearErrors();
+    }
+);
 
 function startEdit() {
     form.rating = props.review.rating;
@@ -73,18 +75,19 @@ function submit() {
         <!-- Form kirim / ubah -->
         <form v-else @submit.prevent="submit" class="mt-2 space-y-3">
             <StarRating v-model="form.rating" />
-            <p v-if="form.errors.rating" class="text-xs text-red-600">{{ form.errors.rating }}</p>
+            <p v-if="form.errors.rating" class="text-xs text-red-600" role="alert">{{ form.errors.rating }}</p>
 
             <div>
                 <textarea
                     v-model="form.comment"
                     rows="3"
                     maxlength="500"
+                    aria-label="Komentar ulasan (opsional)"
                     placeholder="Komentar (opsional)"
                     class="w-full rounded-md border-gray-300 text-sm focus:border-teal-500 focus:ring-teal-500"
                 ></textarea>
                 <div class="flex justify-between mt-1">
-                    <p v-if="form.errors.comment" class="text-xs text-red-600">{{ form.errors.comment }}</p>
+                    <p v-if="form.errors.comment" class="text-xs text-red-600" role="alert">{{ form.errors.comment }}</p>
                     <p class="text-[10px] text-gray-400 ml-auto">{{ form.comment.length }}/500</p>
                 </div>
             </div>

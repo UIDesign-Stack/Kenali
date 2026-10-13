@@ -8,9 +8,9 @@ use App\Http\Requests\StoreReviewRequest;
 use App\Models\Consultation;
 use App\Models\ConsultationReview;
 use App\Models\PsychologistProfile;
+use App\Notifications\NewConsultationReview;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use App\Notifications\NewConsultationReview;
 use Inertia\Inertia;
 
 class ReviewController extends Controller
@@ -30,7 +30,7 @@ class ReviewController extends Controller
                 'created_at' => $r->created_at,
             ]);
 
-        return \Inertia\Inertia::render('Psychologist/Reviews', [
+        return Inertia::render('Psychologist/Reviews', [
             'psychologist' => [
                 'id'             => $psychologistProfile->id,
                 'name'           => $psychologistProfile->user->name,
@@ -41,15 +41,16 @@ class ReviewController extends Controller
             'reviews' => $reviews,
         ]);
     }
-    /** Pasien mengirim ulasan untuk konsultasi yang sudah selesai. */
+
     public function store(StoreReviewRequest $request, Consultation $consultation): RedirectResponse
     {
-        abort_if($consultation->user_id !== $request->user()->id, 403);
+
+        abort_if((int) $consultation->user_id !== (int) $request->user()->id, 404);
 
         $created = null;
 
         $error = DB::transaction(function () use ($request, $consultation, &$created) {
-            $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->first();
+            $locked = Consultation::whereKey($consultation->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== ConsultationStatus::Completed->value) {
                 return 'Ulasan hanya bisa diberikan setelah konsultasi selesai.';
@@ -76,20 +77,20 @@ class ReviewController extends Controller
             return back()->withErrors(['review' => $error]);
         }
 
-        // Notifikasi dikirim setelah transaksi selesai, supaya data sudah tersimpan
-        $consultation->loadMissing('psychologistProfile.user');
-        $consultation->psychologistProfile->user->notify(new NewConsultationReview($created));
+        rescue(function () use ($consultation, $created) {
+            $consultation->loadMissing('psychologistProfile.user');
+            $consultation->psychologistProfile?->user?->notify(new NewConsultationReview($created));
+        });
 
         return back()->with('success', 'Terima kasih, ulasanmu terkirim.');
     }
 
-    /** Pasien mengubah ulasannya dalam 24 jam. */
     public function update(StoreReviewRequest $request, ConsultationReview $review): RedirectResponse
     {
-        abort_if($review->user_id !== $request->user()->id, 403);
+        abort_if((int) $review->user_id !== (int) $request->user()->id, 404);
 
         $error = DB::transaction(function () use ($request, $review) {
-            $locked = ConsultationReview::whereKey($review->id)->lockForUpdate()->first();
+            $locked = ConsultationReview::whereKey($review->id)->lockForUpdate()->firstOrFail();
 
             if (! $locked->isEditableByAuthor()) {
                 return 'Ulasan hanya bisa diubah dalam 24 jam setelah dikirim.';
@@ -112,14 +113,13 @@ class ReviewController extends Controller
         return back()->with('success', 'Ulasan diperbarui.');
     }
 
-    /** Psikolog terkait membalas ulasan (satu balasan, boleh diubah 24 jam). */
     public function reply(ReplyReviewRequest $request, ConsultationReview $review): RedirectResponse
     {
-        $review->loadMissing('psychologistProfile');
-        abort_if($review->psychologistProfile->user_id !== $request->user()->id, 403);
+        $profileId = $request->user()->psychologistProfile?->id;
+        abort_if($profileId === null || (int) $review->psychologist_profile_id !== (int) $profileId, 404);
 
         $error = DB::transaction(function () use ($request, $review) {
-            $locked = ConsultationReview::whereKey($review->id)->lockForUpdate()->first();
+            $locked = ConsultationReview::whereKey($review->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->is_hidden) {
                 return 'Ulasan ini tidak dapat dibalas.';
@@ -130,9 +130,8 @@ class ReviewController extends Controller
             }
 
             $locked->update([
-                'reply'        => $request->validated('reply'),
-                'replied_at'   => $locked->replied_at ?? now(),
-                'reply_hidden' => false,
+                'reply'      => $request->validated('reply'),
+                'replied_at' => $locked->replied_at ?? now(),
             ]);
 
             return null;
@@ -145,7 +144,7 @@ class ReviewController extends Controller
         return back()->with('success', 'Balasan tersimpan.');
     }
 
-    /** Hitung ulang ringkasan rating (hanya ulasan yang tidak disembunyikan). */
+
     public static function recalculate(int $profileId): void
     {
         PsychologistProfile::whereKey($profileId)->lockForUpdate()->first();
