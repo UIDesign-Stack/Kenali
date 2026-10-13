@@ -68,6 +68,11 @@ class AhpController extends Controller
         $userId = $request->user()->id;
 
         DB::transaction(function () use ($criteriaModels, $result, $userId) {
+
+            CriteriaWeight::whereIn('criteria_id', $criteriaModels->pluck('id'))
+                ->where('is_active', true)
+                ->update(['is_active' => false]);
+
             foreach ($criteriaModels as $criteria) {
                 CriteriaWeight::create([
                     'criteria_id' => $criteria->id,
@@ -124,6 +129,7 @@ class AhpController extends Controller
 
         DB::transaction(function () use ($subCriteriaModels, $result) {
             foreach ($subCriteriaModels as $sub) {
+
                 $sub->forceFill(['local_weight' => $result['weights'][$sub->code]])->save();
             }
         });

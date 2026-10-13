@@ -5,7 +5,6 @@ namespace App\Notifications;
 use App\Models\ConsultationMessage;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Str;
 
 class NewConsultationMessage extends Notification
 {
@@ -13,6 +12,10 @@ class NewConsultationMessage extends Notification
 
     public function __construct(public ConsultationMessage $message) {}
 
+    /**
+     * Hanya database dan broadcast (lewat channel pribadi user), tidak ada email,
+     * jadi tiap pesan chat tidak membanjiri inbox email lawan bicara.
+     */
     public function via(object $notifiable): array
     {
         return ['database', 'broadcast'];
@@ -22,13 +25,15 @@ class NewConsultationMessage extends Notification
     {
         $this->message->loadMissing('sender:id,name');
 
+        $senderName = $this->message->sender?->name ?? 'seseorang';
+
         $url = $notifiable->hasRole('psikolog')
-            ? route('psikolog.consultations.show', $this->message->consultation_id)
-            : route('consultations.show', $this->message->consultation_id);
+            ? route('psikolog.consultations.show', $this->message->consultation_id, false)
+            : route('consultations.show', $this->message->consultation_id, false);
 
         return [
-            'title'           => 'Pesan baru dari '.$this->message->sender->name,
-            'body'            => Str::limit($this->message->message, 80),
+            'title'           => 'Pesan baru dari '.$senderName,
+            'body'            => 'Buka konsultasi untuk membaca pesan.',
             'consultation_id' => $this->message->consultation_id,
             'url'             => $url,
         ];

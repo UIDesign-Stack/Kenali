@@ -53,6 +53,9 @@ class PsychologistConsultationController extends Controller
 
         $review = $consultation->review;
 
+        if ($review?->is_hidden) {
+            $review->setAttribute('comment', null);
+        }
         $topAlternative = $consultation->status === ConsultationStatus::Cancelled->value
             ? null
             : $consultation->testSession?->result?->details()
@@ -74,7 +77,6 @@ class PsychologistConsultationController extends Controller
         $this->authorizeOwnership($consultation, $request);
 
         $validated = $request->validated();
-
         abort_unless(
             in_array($validated['status'], [
                 ConsultationStatus::Scheduled->value,
@@ -208,6 +210,7 @@ class PsychologistConsultationController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
 
     private function authorizeOwnership(Consultation $consultation, Request $request): void
     {

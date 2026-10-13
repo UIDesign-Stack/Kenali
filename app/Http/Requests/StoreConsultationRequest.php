@@ -40,16 +40,28 @@ class StoreConsultationRequest extends FormRequest
         ];
     }
 
+    public function attributes(): array
+    {
+        return [
+            'psychologist_profile_id' => 'psikolog',
+            'test_session_id'         => 'sesi tes',
+            'type'                    => 'jenis konsultasi',
+            'notes'                   => 'catatan',
+        ];
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
-            if (empty($this->test_session_id)) {
+            $testSessionId = $this->input('test_session_id');
+
+            if (empty($testSessionId) || $validator->errors()->has('test_session_id')) {
                 return;
             }
 
             $isCompleted = $this->user()
                 ->testSessions()
-                ->where('id', $this->test_session_id)
+                ->where('id', $testSessionId)
                 ->where('status', TestSessionStatus::Completed->value)
                 ->exists();
 

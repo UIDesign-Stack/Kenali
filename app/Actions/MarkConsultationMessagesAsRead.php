@@ -20,11 +20,12 @@ class MarkConsultationMessagesAsRead
             ->update(['read_at' => $readAt]);
 
         if ($updated > 0) {
-            broadcast(new ConsultationMessagesRead(
+
+            rescue(fn () => broadcast(new ConsultationMessagesRead(
                 $consultation->id,
                 $reader->id,
                 $readAt->toIso8601String()
-            ))->toOthers();
+            ))->toOthers());
         }
 
         $reader->unreadNotifications()

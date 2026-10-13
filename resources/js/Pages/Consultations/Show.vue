@@ -42,12 +42,7 @@ const typeLabel = {
     tatap_muka: 'Tatap Muka Langsung',
 };
 
-/**
- * Token CSRF untuk request fetch. Cookie XSRF-TOKEN diprioritaskan karena diperbarui di setiap
- * response (sama seperti cara Inertia/axios bekerja); meta tag dipakai sebagai cadangan.
- * Token di meta tag bisa basi setelah navigasi tanpa muat ulang halaman penuh (mis. logout lalu
- * login lagi), dan request fetch akan ditolak 419.
- */
+
 function csrfHeaders() {
     const cookie = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
     if (cookie) {

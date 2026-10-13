@@ -20,8 +20,6 @@ const statusColor = {
     cancelled: 'bg-gray-200 text-gray-500',
 };
 
-// Tipe konsultasi final: cuma 'chat' dan 'tatap_muka' (permintaan pertemuan
-// langsung). 'video_call' sempat ada tapi sudah dihapus dari sistem.
 const typeLabel = {
     chat: 'Chat',
     tatap_muka: 'Tatap Muka Langsung',
