@@ -31,7 +31,20 @@ class CriteriaSeeder extends Seeder
         ];
 
         foreach ($criteria as $item) {
-            Criteria::firstOrCreate(['code' => $item['code']], $item);
+            $criterion = Criteria::firstOrNew(['code' => $item['code']]);
+
+            if (! $criterion->exists) {
+                $criterion->fill([
+                    'name'        => $item['name'],
+                    'description' => $item['description'],
+                ]);
+            }
+
+            if (! $criterion->exists || (int) $criterion->order === 0) {
+                $criterion->order = $item['order'];
+            }
+
+            $criterion->save();
         }
 
         $this->command->info('Data kriteria utama berhasil ditambahkan.');

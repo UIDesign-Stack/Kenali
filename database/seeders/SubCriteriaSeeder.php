@@ -45,14 +45,20 @@ class SubCriteriaSeeder extends Seeder
             }
 
             foreach ($subs as $index => $sub) {
-                SubCriteria::firstOrCreate(
-                    ['code' => $sub['code']],
-                    [
+                $subCriteria = SubCriteria::firstOrNew(['code' => $sub['code']]);
+
+                if (! $subCriteria->exists) {
+                    $subCriteria->fill([
                         'criteria_id' => $criteria->id,
                         'name'        => $sub['name'],
-                        'order'       => $index + 1,
-                    ]
-                );
+                    ]);
+                }
+
+                if (! $subCriteria->exists || (int) $subCriteria->order === 0) {
+                    $subCriteria->order = $index + 1;
+                }
+
+                $subCriteria->save();
             }
         }
 

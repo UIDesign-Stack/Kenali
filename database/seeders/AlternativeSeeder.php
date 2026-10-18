@@ -68,6 +68,8 @@ class AlternativeSeeder extends Seeder
             ],
         ];
 
+        $requiredProfiles = SubCriteria::count();
+
         foreach ($data as $item) {
             $alternative = Alternative::firstOrCreate(
                 ['name' => $item['name']],
@@ -86,13 +88,20 @@ class AlternativeSeeder extends Seeder
                     continue;
                 }
 
-                $alternative->profiles()->updateOrCreate(
+                $alternative->profiles()->firstOrCreate(
                     ['sub_criteria_id' => $subCriteria->id],
                     ['ideal_score' => $idealScore]
                 );
             }
 
-            $this->command->info("Alternatif \"{$item['name']}\" berhasil diisi ({$alternative->profiles()->count()}/17 profil ideal).");
+            $filled = $alternative->profiles()->count();
+
+            if ($alternative->wasRecentlyCreated && $filled >= $requiredProfiles) {
+                $alternative->forceFill(['is_active' => true])->save();
+            }
+
+            $status = $alternative->is_active ? 'aktif' : 'nonaktif';
+            $this->command->info("Alternatif \"{$item['name']}\" berhasil diisi ({$filled}/{$requiredProfiles} profil ideal, {$status}).");
         }
 
         $this->command->info('Semua data alternatif berhasil ditambahkan.');

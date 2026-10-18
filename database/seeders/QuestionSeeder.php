@@ -127,11 +127,17 @@ class QuestionSeeder extends Seeder
                 continue;
             }
 
+            if ($subCriteria->questions()->exists()) {
+                $this->command->line("Sub-kriteria '{$code}' sudah punya soal, dilewati.");
+                continue;
+            }
+
             foreach ($list as $index => $text) {
-                $subCriteria->questions()->firstOrCreate(
-                    ['question_text' => $text],
-                    ['order' => $index + 1, 'is_active' => true]
-                );
+
+                $question = $subCriteria->questions()->firstOrNew(['question_text' => $text]);
+                $question->order     = $index + 1;
+                $question->is_active = true;
+                $question->save();
             }
         }
 
