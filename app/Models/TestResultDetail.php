@@ -4,13 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TestResultDetail extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'test_result_id',
         'alternative_id',
         'score',
         'rank',
@@ -24,12 +24,12 @@ class TestResultDetail extends Model
         ];
     }
 
-    public function testResult()
+    public function testResult(): BelongsTo
     {
         return $this->belongsTo(TestResult::class);
     }
 
-    public function alternative()
+    public function alternative(): BelongsTo
     {
         return $this->belongsTo(Alternative::class);
     }

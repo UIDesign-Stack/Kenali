@@ -4,17 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class TestSession extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'user_id',
         'life_phase',
-        'status',
-        'started_at',
-        'completed_at',
     ];
 
     protected function casts(): array
@@ -25,22 +24,22 @@ class TestSession extends Model
         ];
     }
 
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    public function answers()
+    public function answers(): HasMany
     {
         return $this->hasMany(TestAnswer::class);
     }
 
-    public function result()
+    public function result(): HasOne
     {
         return $this->hasOne(TestResult::class);
     }
 
-    public function consultations()
+    public function consultations(): HasMany
     {
         return $this->hasMany(Consultation::class);
     }

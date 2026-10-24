@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\LifePhase;
 use App\Models\Alternative;
 use App\Models\SubCriteria;
 use App\Models\TestSession;
@@ -11,13 +12,11 @@ class TopsisService
 {
     public function calculate(TestSession $testSession): array
     {
-        // 1. Skor rata-rata user per sub-kriteria
+
         $userScores = $this->getUserScoresPerSubCriteria($testSession);
 
-        // Bobot global tiap sub-kriteria (kriteria utama x lokal)
         $globalWeights = $this->getGlobalWeights();
 
-        // Semua sub-kriteria wajib punya bobot AHP
         $allSubIds = SubCriteria::pluck('id')->all();
         $missingWeights = array_diff($allSubIds, array_keys($globalWeights));
 
@@ -25,22 +24,23 @@ class TopsisService
             throw new \RuntimeException('Bobot AHP belum lengkap untuk semua sub-kriteria.');
         }
 
-        // Hanya proses sub-kriteria yang punya bobot valid DAN ada jawaban user
         $subCriteriaIds = array_keys(array_intersect_key($globalWeights, $userScores));
 
         if (empty($subCriteriaIds)) {
             throw new \RuntimeException('Tidak ada data bobot atau jawaban yang cukup untuk menghitung TOPSIS.');
         }
 
-        // Normalisasi bobot dari sub-kriteria yang dipakai, supaya jumlahnya tepat 1
         $globalWeights = array_intersect_key($globalWeights, array_flip($subCriteriaIds));
         $totalWeight = array_sum($globalWeights);
         if ($totalWeight > 0) {
             $globalWeights = array_map(fn ($w) => $w / $totalWeight, $globalWeights);
         }
 
-        // Alternatif aktif yang punya profil ideal lengkap untuk sub-kriteria yang dipakai
         $all = Alternative::where('is_active', true)
+            ->where(function ($query) use ($testSession) {
+                $query->where('life_phase', LifePhase::Umum->value)
+                    ->orWhere('life_phase', $testSession->life_phase);
+            })
             ->with(['profiles' => fn ($q) => $q->whereIn('sub_criteria_id', $subCriteriaIds)])
             ->get();
 
@@ -60,7 +60,6 @@ class TopsisService
             throw new \RuntimeException('Minimal dua alternatif aktif dengan profil lengkap diperlukan.');
         }
 
-        // 2 & 3. Bangun matriks keputusan (match score) per alternatif per sub-kriteria
         $decisionMatrix = [];
         foreach ($alternatives as $alt) {
             $row = [];
@@ -72,14 +71,13 @@ class TopsisService
             $decisionMatrix[$alt->id] = $row;
         }
 
-        // 4. Normalisasi (vector normalization) per kolom
         $columnDenominators = [];
         foreach ($subCriteriaIds as $subId) {
             $sumSquares = 0;
             foreach ($decisionMatrix as $row) {
                 $sumSquares += $row[$subId] ** 2;
             }
-            $columnDenominators[$subId] = sqrt($sumSquares) ?: 1; // hindari bagi nol
+            $columnDenominators[$subId] = sqrt($sumSquares) ?: 1;
         }
 
         $normalizedMatrix = [];
@@ -89,7 +87,6 @@ class TopsisService
             }
         }
 
-        // 5. Kalikan dengan bobot global -> weighted normalized matrix
         $weightedMatrix = [];
         foreach ($normalizedMatrix as $altId => $row) {
             foreach ($row as $subId => $value) {
@@ -97,7 +94,6 @@ class TopsisService
             }
         }
 
-        // 6. Solusi ideal positif (A+) dan negatif (A-) per kolom
         $idealPositive = [];
         $idealNegative = [];
         foreach ($subCriteriaIds as $subId) {
@@ -106,7 +102,7 @@ class TopsisService
             $idealNegative[$subId] = min($columnValues);
         }
 
-        // 7 & 8. Jarak ke solusi ideal dan skor akhir (closeness coefficient)
+
         $results = [];
         foreach ($weightedMatrix as $altId => $row) {
             $distancePositive = 0;
