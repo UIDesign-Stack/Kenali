@@ -1,12 +1,13 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, onBeforeUnmount } from 'vue';
 import { router, Head } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     testSession: { type: Object, required: true },
     questions: { type: Array, required: true },
-    existingAnswers: { type: Object, required: true },
+
+    existingAnswers: { type: [Object, Array], required: true },
 });
 
 const answers = ref({ ...props.existingAnswers });
@@ -26,6 +27,7 @@ const completing = ref(false);
 const errorMessage = ref(null);
 
 let advanceTimeout = null;
+let redirectTimeout = null;
 
 const currentQuestion = computed(() => props.questions[currentIndex.value]);
 const totalQuestions = computed(() => props.questions.length);
@@ -53,6 +55,25 @@ const scaleOptions = [
     { value: 5, label: 'Sangat Setuju' },
 ];
 
+
+function csrfHeaders() {
+    const cookie = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+    if (cookie) {
+        return { 'X-XSRF-TOKEN': decodeURIComponent(cookie[1]) };
+    }
+
+    const meta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    return meta ? { 'X-CSRF-TOKEN': meta } : {};
+}
+
+function describeSaveError(status) {
+    if (status === 401) return 'Sesi login sudah berakhir. Silakan login ulang; jawabanmu yang sudah tersimpan tidak hilang.';
+    if (status === 419) return 'Sesi sudah tidak valid. Muat ulang halaman; jawabanmu yang sudah tersimpan tidak hilang.';
+    if (status === 429) return 'Terlalu cepat. Tunggu sebentar, lalu klik "Coba simpan lagi" pada soal yang bertanda merah.';
+
+    return 'Beberapa jawaban gagal tersimpan karena masalah koneksi. Cek titik merah di bawah.';
+}
+
 function cancelPendingAdvance() {
     if (advanceTimeout) {
         clearTimeout(advanceTimeout);
@@ -70,6 +91,11 @@ function scheduleAdvance() {
     }, 250);
 }
 
+onBeforeUnmount(() => {
+    cancelPendingAdvance();
+    clearTimeout(redirectTimeout);
+});
+
 async function selectAnswer(value) {
     const question = currentQuestion.value;
     if (!question || inactiveQuestionIds.has(question.id)) return;
@@ -79,14 +105,14 @@ async function selectAnswer(value) {
     errorMessage.value = null;
 
     try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         const response = await fetch(route('tests.answers.save', props.testSession.id), {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken ?? '',
                 'X-Requested-With': 'XMLHttpRequest',
+                ...csrfHeaders(),
             },
             body: JSON.stringify({
                 question_id: question.id,
@@ -98,7 +124,6 @@ async function selectAnswer(value) {
             const data = await response.json().catch(() => null);
 
             if (data?.errors?.question_id) {
-
                 inactiveQuestionIds.add(question.id);
                 failedQuestionIds.delete(question.id);
                 errorMessage.value = 'Soal ini sudah tidak berlaku dan dilewati otomatis dari daftar wajib.';
@@ -106,15 +131,25 @@ async function selectAnswer(value) {
                 scheduleAdvance();
                 return;
             }
+
+            failedQuestionIds.delete(question.id);
+            errorMessage.value = (data?.message ?? 'Sesi tes ini sudah tidak aktif.') + ' Mengalihkan…';
+            saving.value = false;
+            redirectTimeout = setTimeout(() => router.visit(route('tests.show', props.testSession.id)), 1500);
+            return;
         }
 
-        if (!response.ok) throw new Error('Response tidak OK');
+        if (!response.ok) {
+            failedQuestionIds.add(question.id);
+            errorMessage.value = describeSaveError(response.status);
+            saving.value = false;
+            return;
+        }
 
         failedQuestionIds.delete(question.id);
     } catch (e) {
-        console.error('Gagal menyimpan jawaban:', e);
         failedQuestionIds.add(question.id);
-        errorMessage.value = 'Beberapa jawaban gagal tersimpan karena masalah koneksi. Cek titik merah di bawah.';
+        errorMessage.value = describeSaveError(0);
     } finally {
         saving.value = false;
     }
@@ -163,7 +198,6 @@ function finishTest() {
         onError: (errors) => {
             errorMessage.value = errors.complete ?? 'Gagal menyelesaikan tes.';
 
-            // Soal baru mungkin diaktifkan admin: muat ulang daftar soal dan jawaban
             router.reload({
                 only: ['questions', 'existingAnswers'],
                 preserveScroll: true,
@@ -197,7 +231,14 @@ function finishTest() {
                         <span v-if="saving" class="text-teal-500">· menyimpan…</span>
                     </span>
                 </div>
-                <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                    class="w-full h-2 bg-gray-200 rounded-full overflow-hidden"
+                    role="progressbar"
+                    :aria-valuenow="progressPercent"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-label="Kemajuan pengisian tes"
+                >
                     <div
                         class="h-full bg-teal-600 transition-all duration-300"
                         :style="{ width: progressPercent + '%' }"
@@ -220,20 +261,21 @@ function finishTest() {
                 </p>
                 <p class="text-base text-gray-800 mb-6">{{ currentQuestion.question_text }}</p>
 
-                <p v-if="failedQuestionIds.has(currentQuestion.id)" class="text-xs text-red-600 mb-3">
+                <p v-if="failedQuestionIds.has(currentQuestion.id)" class="text-xs text-red-600 mb-3" role="alert">
                     Jawaban soal ini gagal tersimpan.
                     <button type="button" @click="retryFailedSave(currentQuestion.id)" class="underline font-medium">
                         Coba simpan lagi
                     </button>
                 </p>
 
-                <div class="space-y-2">
+                <div class="space-y-2" role="group" aria-label="Pilihan jawaban">
                     <button
                         v-for="option in scaleOptions"
                         :key="option.value"
                         type="button"
                         @click="selectAnswer(option.value)"
                         :disabled="saving"
+                        :aria-pressed="answers[currentQuestion.id] === option.value"
                         class="w-full flex items-center justify-between px-4 py-3 rounded-md border text-sm transition disabled:opacity-50"
                         :class="answers[currentQuestion.id] === option.value
                             ? 'bg-teal-600 text-white border-teal-600'
@@ -276,13 +318,14 @@ function finishTest() {
                 </button>
             </div>
 
-            <p v-if="errorMessage" class="mt-4 text-sm text-red-600 text-center">{{ errorMessage }}</p>
+            <p v-if="errorMessage" class="mt-4 text-sm text-red-600 text-center" role="alert">{{ errorMessage }}</p>
 
             <!-- Navigasi cepat titik-titik -->
             <div class="flex flex-wrap gap-1.5 mt-8 justify-center">
                 <button
                     v-for="(q, index) in questions"
                     :key="q.id"
+                    type="button"
                     @click="goToQuestion(index)"
                     class="w-2.5 h-2.5 rounded-full transition"
                     :class="[
@@ -291,6 +334,9 @@ function finishTest() {
                             ? 'bg-gray-300'
                             : (failedQuestionIds.has(q.id) ? 'bg-red-500' : (q.id in answers ? 'bg-teal-500' : 'bg-gray-200')),
                     ]"
+                    :aria-label="inactiveQuestionIds.has(q.id)
+                        ? `Soal ${index + 1}, sudah tidak berlaku`
+                        : (failedQuestionIds.has(q.id) ? `Soal ${index + 1}, gagal tersimpan` : (q.id in answers ? `Soal ${index + 1}, sudah dijawab` : `Soal ${index + 1}, belum dijawab`))"
                     :title="inactiveQuestionIds.has(q.id)
                         ? `Soal ${index + 1} — sudah tidak berlaku`
                         : (failedQuestionIds.has(q.id) ? `Soal ${index + 1} — gagal tersimpan` : `Soal ${index + 1}`)"

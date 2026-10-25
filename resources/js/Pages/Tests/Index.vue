@@ -4,7 +4,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 
 const props = defineProps({
     sessions: { type: Array, required: true },
-    // Dikirim dari TestController::index() via LifePhase::assignableToUserOptions().
+
     lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
@@ -18,11 +18,9 @@ const statusColor = {
     in_progress: 'bg-amber-100 text-amber-700',
 };
 
-// Backend mengirim result.topDetail (rank teratas), BUKAN result.details[0].
-// Relasi `details` sengaja di-unset di TestController::index() setelah
-// topDetail dihitung -- lihat catatan limit(1) di controller.
 function topAlternativeName(session) {
-    return session.result?.topDetail?.alternative?.name ?? null;
+    const top = session.result?.top_detail ?? session.result?.topDetail;
+    return top?.alternative?.name ?? null;
 }
 
 function formatDate(dateStr) {
@@ -92,6 +90,9 @@ function formatDate(dateStr) {
                     </p>
                     <p v-else-if="session.status === 'in_progress'" class="text-xs text-gray-400 mt-2">
                         Klik untuk melanjutkan tes →
+                    </p>
+                    <p v-else-if="session.status === 'completed'" class="text-xs text-amber-600 mt-2">
+                        Hasil belum tersedia. Buka untuk menghitung ulang →
                     </p>
                 </Link>
             </div>

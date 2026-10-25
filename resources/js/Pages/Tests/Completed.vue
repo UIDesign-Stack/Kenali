@@ -32,7 +32,6 @@ function retryCalculation() {
     });
 }
 
-// Tangkap respons non-Inertia, misalnya 429 dari throttle
 let removeInvalid = null;
 
 onMounted(() => {
@@ -57,6 +56,11 @@ onBeforeUnmount(() => removeInvalid?.());
         </template>
 
         <div class="max-w-xl mx-auto p-6">
+            <!-- Pesan dari server, mis. "Tes selesai..." atau "Hasil berhasil dihitung ulang." -->
+            <div v-if="$page.props.flash?.success" class="mb-6 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+                {{ $page.props.flash.success }}
+            </div>
+
             <div class="text-center mb-8">
                 <p class="text-2xl mb-1">{{ hasResult ? '🎉' : '⏳' }}</p>
                 <p class="text-sm text-gray-500">Tes untuk fase</p>
@@ -111,7 +115,7 @@ onBeforeUnmount(() => removeInvalid?.());
                         :aria-valuenow="scorePercent(detail.score)"
                         aria-valuemin="0"
                         aria-valuemax="100"
-                        :aria-label="`Skor kecocokan ${detail.alternative?.name ?? ''}`"
+                        :aria-label="`Skor kedekatan ${detail.alternative?.name ?? ''}`"
                     >
                         <div
                             class="h-full bg-teal-500"
@@ -119,6 +123,14 @@ onBeforeUnmount(() => removeInvalid?.());
                         ></div>
                     </div>
                 </div>
+
+                <!-- Skor TOPSIS adalah kedekatan RELATIF antar bidang yang dibandingkan, bukan nilai
+                     kecocokan mutlak. Tanpa penjelasan ini, angka seperti 90% terbaca sebagai
+                     "90% cocok", padahal artinya hanya paling dekat dengan profil ideal di antara pilihan. -->
+                <p class="text-[11px] text-gray-400 pt-2">
+                    Persentase menunjukkan kedekatan hasilmu dengan profil ideal tiap bidang, dibandingkan
+                    antar bidang. Gunakan sebagai gambaran awal dan bahan diskusi, bukan keputusan akhir.
+                </p>
             </div>
         </div>
     </AuthenticatedLayout>

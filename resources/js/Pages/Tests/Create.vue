@@ -6,20 +6,18 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 const props = defineProps({
     inProgressSession: { type: Object, default: null },
     defaultLifePhase: { type: String, default: null },
-    // Dikirim dari TestController::create() via LifePhase::assignableToUserOptions().
-    // Hanya berisi { value: label }. Deskripsi tetap di frontend (murni teks
-    // UX, bukan nilai bisnis), supaya tidak perlu menambah field non-enum ke
-    // backend hanya untuk copy tampilan.
+
     lifePhaseOptions: { type: Object, default: () => ({}) },
 });
 
+const initialLifePhase = props.defaultLifePhase && props.lifePhaseOptions[props.defaultLifePhase]
+    ? props.defaultLifePhase
+    : '';
+
 const form = useForm({
-    life_phase: props.defaultLifePhase ?? '',
+    life_phase: initialLifePhase,
 });
 
-// Deskripsi per opsi -- keyed by value yang SAMA dengan lifePhaseOptions dari
-// backend, supaya value/label tetap satu sumber kebenaran, cuma desc yang
-// lokal di sini.
 const descriptions = {
     siswa: 'Masih sekolah (SMP/SMA) dan sedang menimbang jurusan kuliah',
     mahasiswa: 'Sedang kuliah atau baru lulus, mencari arah karier',
@@ -35,6 +33,8 @@ const options = computed(() =>
 );
 
 function submit() {
+    if (form.processing) return;
+
     if (props.inProgressSession) {
         const confirmed = confirm(
             'Kamu masih punya tes yang belum selesai. Yakin ingin mulai tes baru?'
@@ -98,7 +98,7 @@ function submit() {
                     </label>
                 </fieldset>
 
-                <p v-if="form.errors.life_phase" class="text-xs text-red-600">{{ form.errors.life_phase }}</p>
+                <p v-if="form.errors.life_phase" class="text-xs text-red-600" role="alert">{{ form.errors.life_phase }}</p>
 
                 <button
                     type="submit"
