@@ -62,12 +62,26 @@ class ConsultationStatusUpdated extends Notification implements ShouldQueue
         };
     }
 
+    protected function mailBody(): string
+    {
+        return match ($this->context) {
+            'scheduled'                   => 'Permintaan konsultasimu diterima dan sudah dijadwalkan oleh psikolog. Buka aplikasi untuk melihat jadwalnya.',
+            'rejected'                    => 'Permintaan konsultasimu ditolak. Buka aplikasi untuk melihat alasannya.',
+            'cancelled_after_scheduled'   => 'Konsultasi terjadwalmu dibatalkan oleh psikolog. Buka aplikasi untuk melihat alasannya.',
+            'completed'                   => 'Konsultasimu sudah ditandai selesai. Buka aplikasi untuk memberi ulasan.',
+            'force_cancelled'             => 'Konsultasimu dibatalkan oleh admin. Buka aplikasi untuk melihat alasannya.',
+            'auto_completed'              => 'Konsultasimu otomatis ditutup karena tidak ada aktivitas. Buka aplikasi untuk memberi ulasan.',
+            'auto_completed_psychologist' => 'Salah satu konsultasi Anda ditutup otomatis karena tidak ada aktivitas.',
+            default                       => 'Ada pembaruan pada konsultasimu. Buka aplikasi untuk melihat detailnya.',
+        };
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
             ->subject($this->title())
-            ->line($this->body())
-            ->action('Lihat Konsultasi', $this->url($notifiable));
+            ->line($this->mailBody())
+            ->action('Lihat Konsultasi', $this->url($notifiable, absolute: true));
     }
 
     public function toArray(object $notifiable): array
@@ -76,14 +90,14 @@ class ConsultationStatusUpdated extends Notification implements ShouldQueue
             'title'           => $this->title(),
             'body'            => $this->body(),
             'consultation_id' => $this->consultation->id,
-            'url'             => $this->url($notifiable),
+            'url'             => $this->url($notifiable, absolute: false),
         ];
     }
 
-    protected function url(object $notifiable): string
+    protected function url(object $notifiable, bool $absolute): string
     {
         return $notifiable->hasRole('psikolog')
-            ? route('psikolog.consultations.show', $this->consultation->id)
-            : route('consultations.show', $this->consultation->id);
+            ? route('psikolog.consultations.show', $this->consultation->id, $absolute)
+            : route('consultations.show', $this->consultation->id, $absolute);
     }
 }

@@ -13,8 +13,11 @@ defineProps({
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-3">
-                <Link :href="route('admin.alternatives.index')" class="text-sm text-gray-400 hover:text-gray-600">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <Link
+                    :href="route('admin.alternatives.index')"
+                    class="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm font-medium text-gray-500 ring-1 ring-gray-200 transition hover:bg-indigo-50 hover:text-indigo-600 hover:ring-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                >
                     ← Alternatif
                 </Link>
                 <h1 class="text-xl font-semibold text-gray-800">Tambah Alternatif</h1>

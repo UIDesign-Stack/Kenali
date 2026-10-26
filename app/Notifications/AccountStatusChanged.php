@@ -41,7 +41,7 @@ class AccountStatusChanged extends Notification implements ShouldQueue
             'body'  => $this->isActive
                 ? 'Akunmu sudah diaktifkan kembali oleh admin.'
                 : 'Akunmu dinonaktifkan sementara oleh admin.',
-            'url' => route('dashboard'),
+            'url' => route('dashboard', [], false),
         ];
     }
 }

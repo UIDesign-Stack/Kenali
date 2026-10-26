@@ -16,12 +16,14 @@ use App\Http\Controllers\TestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+
 Route::get('/', function () {
     return Inertia::render('Welcome', [
         'canLogin'    => Route::has('login'),
         'canRegister' => Route::has('register'),
     ]);
 });
+
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -35,9 +37,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])
         ->name('profile.avatar.destroy');
 
-    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-    Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
-    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
+    Route::get('/notifications', [NotificationController::class, 'index'])
+        ->middleware('throttle:120,1')
+        ->name('notifications.index');
+    Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])
+        ->middleware('throttle:60,1')
+        ->name('notifications.read');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])
+        ->middleware('throttle:30,1')
+        ->name('notifications.read-all');
     Route::get('/psychologists/{psychologistProfile}/reviews', [ReviewController::class, 'index'])->name('psychologists.reviews');
 });
 
@@ -93,6 +101,7 @@ Route::middleware(['auth', 'verified', 'role:psikolog'])->prefix('psikolog')->na
 });
 
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+    // Bobot AHP
     Route::get('/ahp/criteria', [AhpController::class, 'criteriaIndex'])->name('ahp.criteria.index');
     Route::post('/ahp/criteria', [AhpController::class, 'criteriaStore'])
         ->middleware('throttle:20,1')

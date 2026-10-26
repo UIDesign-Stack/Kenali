@@ -97,7 +97,9 @@ class DashboardController extends Controller
                 'scheduled_consultations' => $profile->consultations()->where('status', ConsultationStatus::Scheduled->value)->count(),
                 'completed_consultations' => $profile->consultations()->where('status', ConsultationStatus::Completed->value)->count(),
             ],
+
             'recentConsultations' => $profile->consultations()
+                ->select(['id', 'user_id', 'psychologist_profile_id', 'type', 'status', 'scheduled_at', 'created_at'])
                 ->with('user:id,name')
                 ->latest()
                 ->limit(5)

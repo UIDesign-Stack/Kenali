@@ -211,6 +211,55 @@ function finishTest() {
         onFinish: () => (completing.value = false),
     });
 }
+
+const optionStyles = {
+    1: {
+        idle: 'bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100 hover:border-rose-200',
+        on: 'bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-500/30',
+    },
+    2: {
+        idle: 'bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100 hover:border-orange-200',
+        on: 'bg-orange-400 text-white border-orange-400 shadow-lg shadow-orange-400/30',
+    },
+    3: {
+        idle: 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100',
+        on: 'bg-slate-600 text-white border-slate-600 shadow-lg shadow-slate-500/30',
+    },
+    4: {
+        idle: 'bg-teal-50 text-teal-700 border-teal-100 hover:bg-teal-100 hover:border-teal-200',
+        on: 'bg-teal-500 text-white border-teal-500 shadow-lg shadow-teal-500/30',
+    },
+    5: {
+        idle: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100 hover:border-indigo-200',
+        on: 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/30',
+    },
+};
+
+function optionClass(value, selected) {
+    return selected ? optionStyles[value].on : optionStyles[value].idle;
+}
+
+function chipClass(q, index) {
+    const base = index === currentIndex.value ? 'ring-2 ring-indigo-400 ring-offset-1 ' : '';
+
+    if (inactiveQuestionIds.has(q.id)) return base + 'bg-gray-200 text-gray-400 line-through';
+    if (failedQuestionIds.has(q.id)) return base + 'bg-rose-500 text-white';
+    if (q.id in answers.value) return base + 'bg-teal-500 text-white';
+    return base + 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+}
+
+function chipLabel(q, index) {
+    if (inactiveQuestionIds.has(q.id)) return `Soal ${index + 1}, sudah tidak berlaku`;
+    if (failedQuestionIds.has(q.id)) return `Soal ${index + 1}, gagal tersimpan`;
+    if (q.id in answers.value) return `Soal ${index + 1}, sudah dijawab`;
+    return `Soal ${index + 1}, belum dijawab`;
+}
+
+function chipTitle(q, index) {
+    if (inactiveQuestionIds.has(q.id)) return `Soal ${index + 1} — sudah tidak berlaku`;
+    if (failedQuestionIds.has(q.id)) return `Soal ${index + 1} — gagal tersimpan`;
+    return `Soal ${index + 1}`;
+}
 </script>
 
 <template>
@@ -221,126 +270,177 @@ function finishTest() {
             <h1 class="text-xl font-semibold text-gray-800">Isi Tes</h1>
         </template>
 
-        <div class="max-w-2xl mx-auto p-6">
-            <!-- Progress bar -->
-            <div class="mb-8">
-                <div class="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>Soal {{ currentIndex + 1 }} dari {{ totalQuestions }}</span>
-                    <span>
-                        {{ answeredCount }}/{{ requiredQuestions.length }} terjawab
-                        <span v-if="saving" class="text-teal-500">· menyimpan…</span>
-                    </span>
-                </div>
-                <div
-                    class="w-full h-2 bg-gray-200 rounded-full overflow-hidden"
-                    role="progressbar"
-                    :aria-valuenow="progressPercent"
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    aria-label="Kemajuan pengisian tes"
-                >
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+
+            <!-- Progres -->
+            <section class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-900 via-indigo-700 to-violet-600 px-6 py-5 text-white shadow-lg shadow-indigo-900/20">
+                <div class="pointer-events-none absolute -top-16 -right-10 h-48 w-48 rounded-full bg-rose-400/30 blur-3xl"></div>
+                <div class="pointer-events-none absolute -bottom-20 left-10 h-48 w-48 rounded-full bg-teal-300/25 blur-3xl"></div>
+
+                <div class="relative">
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span class="font-semibold">Soal {{ currentIndex + 1 }} dari {{ totalQuestions }}</span>
+                        <span class="text-indigo-100">
+                            {{ answeredCount }}/{{ requiredQuestions.length }} terjawab
+                            <span v-if="saving" class="ml-1 text-amber-200">· menyimpan…</span>
+                        </span>
+                    </div>
                     <div
-                        class="h-full bg-teal-600 transition-all duration-300"
-                        :style="{ width: progressPercent + '%' }"
-                    ></div>
-                </div>
-            </div>
-
-            <!-- Kartu soal nonaktif -->
-            <div
-                v-if="currentQuestion && inactiveQuestionIds.has(currentQuestion.id)"
-                class="p-6 border border-gray-200 bg-gray-50 rounded-lg text-center text-sm text-gray-500"
-            >
-                Soal ini sudah tidak berlaku lagi dan tidak perlu dijawab.
-            </div>
-
-            <!-- Kartu soal -->
-            <div v-else-if="currentQuestion" class="p-6 border border-gray-200 rounded-lg">
-                <p class="text-xs text-teal-600 font-medium mb-2">
-                    {{ currentQuestion.sub_criteria?.name }}
-                </p>
-                <p class="text-base text-gray-800 mb-6">{{ currentQuestion.question_text }}</p>
-
-                <p v-if="failedQuestionIds.has(currentQuestion.id)" class="text-xs text-red-600 mb-3" role="alert">
-                    Jawaban soal ini gagal tersimpan.
-                    <button type="button" @click="retryFailedSave(currentQuestion.id)" class="underline font-medium">
-                        Coba simpan lagi
-                    </button>
-                </p>
-
-                <div class="space-y-2" role="group" aria-label="Pilihan jawaban">
-                    <button
-                        v-for="option in scaleOptions"
-                        :key="option.value"
-                        type="button"
-                        @click="selectAnswer(option.value)"
-                        :disabled="saving"
-                        :aria-pressed="answers[currentQuestion.id] === option.value"
-                        class="w-full flex items-center justify-between px-4 py-3 rounded-md border text-sm transition disabled:opacity-50"
-                        :class="answers[currentQuestion.id] === option.value
-                            ? 'bg-teal-600 text-white border-teal-600'
-                            : 'bg-white text-gray-600 border-gray-200 hover:border-teal-300'"
+                        class="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-white/20"
+                        role="progressbar"
+                        :aria-valuenow="progressPercent"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-label="Kemajuan pengisian tes"
                     >
-                        <span>{{ option.label }}</span>
-                        <span class="text-xs opacity-70">{{ option.value }}</span>
-                    </button>
+                        <div
+                            class="h-full rounded-full bg-gradient-to-r from-teal-300 to-amber-300 transition-all duration-300 motion-reduce:transition-none"
+                            :style="{ width: progressPercent + '%' }"
+                        ></div>
+                    </div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Navigasi -->
-            <div class="flex items-center justify-between mt-6">
-                <button
-                    type="button"
-                    @click="goPrevious"
-                    :disabled="currentIndex === 0"
-                    class="text-sm text-gray-500 disabled:opacity-30 hover:text-gray-700"
-                >
-                    ← Sebelumnya
-                </button>
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
 
-                <button
-                    v-if="isLastQuestion"
-                    type="button"
-                    @click="finishTest"
-                    :disabled="completing || !isComplete || hasFailedSaves"
-                    class="px-5 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40 hover:bg-teal-700"
-                >
-                    {{ completing ? 'Menyelesaikan…' : 'Selesai & Lihat Hasil' }}
-                </button>
+                <!-- ===== Kiri: soal + navigasi ===== -->
+                <div class="lg:col-span-3">
 
-                <button
-                    v-else
-                    type="button"
-                    @click="goNext"
-                    class="text-sm text-gray-500 hover:text-gray-700"
-                >
-                    Lewati →
-                </button>
-            </div>
+                    <!-- Kartu soal nonaktif -->
+                    <div
+                        v-if="currentQuestion && inactiveQuestionIds.has(currentQuestion.id)"
+                        class="rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center text-sm text-gray-500"
+                    >
+                        Soal ini sudah tidak berlaku lagi dan tidak perlu dijawab.
+                    </div>
 
-            <p v-if="errorMessage" class="mt-4 text-sm text-red-600 text-center" role="alert">{{ errorMessage }}</p>
+                    <!-- Kartu soal -->
+                    <section
+                        v-else-if="currentQuestion"
+                        class="rounded-3xl bg-white p-6 ring-1 ring-gray-200/80 shadow-sm sm:p-8"
+                    >
+                        <div class="flex items-center gap-3">
+                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-bold text-indigo-700">
+                                {{ currentIndex + 1 }}
+                            </span>
+                            <span
+                                v-if="currentQuestion.sub_criteria?.name"
+                                class="rounded-full bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700 ring-1 ring-inset ring-teal-600/20"
+                            >
+                                {{ currentQuestion.sub_criteria?.name }}
+                            </span>
+                        </div>
 
-            <!-- Navigasi cepat titik-titik -->
-            <div class="flex flex-wrap gap-1.5 mt-8 justify-center">
-                <button
-                    v-for="(q, index) in questions"
-                    :key="q.id"
-                    type="button"
-                    @click="goToQuestion(index)"
-                    class="w-2.5 h-2.5 rounded-full transition"
-                    :class="[
-                        index === currentIndex ? 'ring-2 ring-teal-400' : '',
-                        inactiveQuestionIds.has(q.id)
-                            ? 'bg-gray-300'
-                            : (failedQuestionIds.has(q.id) ? 'bg-red-500' : (q.id in answers ? 'bg-teal-500' : 'bg-gray-200')),
-                    ]"
-                    :aria-label="inactiveQuestionIds.has(q.id)
-                        ? `Soal ${index + 1}, sudah tidak berlaku`
-                        : (failedQuestionIds.has(q.id) ? `Soal ${index + 1}, gagal tersimpan` : (q.id in answers ? `Soal ${index + 1}, sudah dijawab` : `Soal ${index + 1}, belum dijawab`))"
-                    :title="inactiveQuestionIds.has(q.id)
-                        ? `Soal ${index + 1} — sudah tidak berlaku`
-                        : (failedQuestionIds.has(q.id) ? `Soal ${index + 1} — gagal tersimpan` : `Soal ${index + 1}`)"
-                ></button>
+                        <p class="mt-5 text-xl font-semibold leading-relaxed text-gray-900 sm:text-2xl">
+                            {{ currentQuestion.question_text }}
+                        </p>
+
+                        <p
+                            v-if="failedQuestionIds.has(currentQuestion.id)"
+                            class="mt-4 rounded-xl bg-rose-50 px-4 py-2.5 text-sm text-rose-700 ring-1 ring-rose-200"
+                            role="alert"
+                        >
+                            Jawaban soal ini gagal tersimpan.
+                            <button type="button" @click="retryFailedSave(currentQuestion.id)" class="font-semibold underline">
+                                Coba simpan lagi
+                            </button>
+                        </p>
+
+                        <div
+                            class="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-5"
+                            role="group"
+                            aria-label="Pilihan jawaban"
+                        >
+                            <button
+                                v-for="option in scaleOptions"
+                                :key="option.value"
+                                type="button"
+                                @click="selectAnswer(option.value)"
+                                :disabled="saving"
+                                :aria-pressed="answers[currentQuestion.id] === option.value"
+                                class="flex items-center justify-between gap-2 rounded-2xl border px-4 py-3 text-sm font-medium transition duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:opacity-50 motion-reduce:transition-none sm:flex-col sm:justify-center sm:py-5 sm:text-center"
+                                :class="[
+                                    optionClass(option.value, answers[currentQuestion.id] === option.value),
+                                    answers[currentQuestion.id] === option.value ? 'sm:-translate-y-1' : '',
+                                ]"
+                            >
+                                <span class="text-2xl font-bold sm:order-first sm:text-3xl">{{ option.value }}</span>
+                                <span class="text-xs leading-tight sm:mt-1 sm:text-[11px]">{{ option.label }}</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- Navigasi -->
+                    <div class="mt-5 flex items-center justify-between">
+                        <button
+                            type="button"
+                            @click="goPrevious"
+                            :disabled="currentIndex === 0"
+                            class="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-white hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:shadow-none"
+                        >
+                            ← Sebelumnya
+                        </button>
+
+                        <button
+                            v-if="isLastQuestion"
+                            type="button"
+                            @click="finishTest"
+                            :disabled="completing || !isComplete || hasFailedSaves"
+                            class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:from-indigo-700 hover:to-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                        >
+                            <svg v-if="completing" class="h-4 w-4 animate-spin motion-reduce:animate-none" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4Z"></path>
+                            </svg>
+                            {{ completing ? 'Menyelesaikan…' : 'Selesai & Lihat Hasil' }}
+                        </button>
+
+                        <button
+                            v-else
+                            type="button"
+                            @click="goNext"
+                            class="rounded-xl px-4 py-2.5 text-sm font-medium text-indigo-600 transition hover:bg-white hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                        >
+                            Lewati →
+                        </button>
+                    </div>
+
+                    <p
+                        v-if="errorMessage"
+                        class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-center text-sm text-rose-700"
+                        role="alert"
+                    >
+                        {{ errorMessage }}
+                    </p>
+                </div>
+
+                <!-- ===== Kanan: peta soal ===== -->
+                <aside class="lg:col-span-1">
+                    <div class="rounded-3xl bg-white p-5 ring-1 ring-gray-200/80 shadow-sm lg:sticky lg:top-24">
+                        <h2 class="text-sm font-semibold text-gray-800">Peta soal</h2>
+
+                        <div class="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-8 lg:grid-cols-5">
+                            <button
+                                v-for="(q, index) in questions"
+                                :key="q.id"
+                                type="button"
+                                @click="goToQuestion(index)"
+                                class="flex aspect-square items-center justify-center rounded-lg text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                :class="chipClass(q, index)"
+                                :aria-label="chipLabel(q, index)"
+                                :title="chipTitle(q, index)"
+                            >
+                                {{ index + 1 }}
+                            </button>
+                        </div>
+
+                        <ul class="mt-5 space-y-1.5 text-[11px] text-gray-500">
+                            <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded bg-teal-500"></span>Sudah dijawab</li>
+                            <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded bg-gray-200"></span>Belum dijawab</li>
+                            <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded bg-rose-500"></span>Gagal tersimpan</li>
+                        </ul>
+                    </div>
+                </aside>
             </div>
         </div>
     </AuthenticatedLayout>

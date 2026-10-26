@@ -330,6 +330,36 @@ function cancelConsultation() {
         onFinish: () => (statusProcessing.value = false),
     });
 }
+
+// ---------------------------------------------------------------
+// UI only: avatar & lencana status
+// ---------------------------------------------------------------
+const statusText = {
+    pending: 'Menunggu respon',
+    scheduled: 'Terjadwal',
+    completed: 'Selesai',
+    cancelled: 'Dibatalkan',
+};
+
+const statusChip = {
+    pending: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+    scheduled: 'bg-sky-50 text-sky-700 ring-sky-600/20',
+    completed: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    cancelled: 'bg-gray-100 text-gray-500 ring-gray-500/20',
+};
+
+function initials(name) {
+    if (!name) return '?';
+    return name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase() ?? '')
+        .join('');
+}
+
+const fieldClass =
+    'w-full rounded-xl border-gray-200 bg-white text-sm placeholder:text-gray-400 focus:border-indigo-400 focus:ring-indigo-400';
 </script>
 
 <template>
@@ -337,185 +367,270 @@ function cancelConsultation() {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-3">
-                <Link :href="route('psikolog.consultations.index')" class="text-sm text-gray-400 hover:text-gray-600">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <Link
+                    :href="route('psikolog.consultations.index')"
+                    class="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm font-medium text-gray-500 ring-1 ring-gray-200 transition hover:bg-indigo-50 hover:text-indigo-600 hover:ring-indigo-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                >
                     ← Konsultasi
                 </Link>
                 <h1 class="text-xl font-semibold text-gray-800">{{ consultation.user.name }}</h1>
             </div>
         </template>
 
-        <div class="max-w-xl mx-auto p-6">
-            <p class="text-xs text-gray-400 mb-3">Jenis: {{ typeLabel[consultation.type] ?? consultation.type }}</p>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
 
-            <p v-if="consultation.scheduled_at && consultation.status === 'scheduled'" class="text-sm text-gray-700 mb-3">
-                Jadwal: <strong>{{ formatDateTime(consultation.scheduled_at) }}</strong>
-            </p>
-
-            <div v-if="$page.props.flash?.success" class="mb-4 p-3 rounded-md bg-teal-50 text-teal-700 text-sm">
+            <!-- Notifikasi -->
+            <div
+                v-if="$page.props.flash?.success"
+                class="flex items-center gap-3 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800 ring-1 ring-emerald-200"
+                role="status"
+            >
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                </span>
                 {{ $page.props.flash.success }}
             </div>
 
-            <div v-if="actionError" class="mb-4 p-3 rounded-md bg-red-50 text-red-700 text-sm" role="alert">
-                {{ actionError }}
+            <div
+                v-if="actionError"
+                class="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700"
+                role="alert"
+            >
+                <svg class="mt-0.5 h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>
+                <span>{{ actionError }}</span>
             </div>
 
-            <div v-if="topAlternative" class="mb-4 p-3 rounded-md bg-teal-50 text-sm text-teal-700">
-                Rekomendasi dari hasil tes: <strong>{{ topAlternative }}</strong>
-            </div>
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-5">
 
-            <div v-if="consultation.notes" class="mb-4 p-3 rounded-md bg-gray-50 text-sm text-gray-600 whitespace-pre-line">
-                "{{ consultation.notes }}"
-            </div>
+                <!-- ===== Kiri: area utama sesuai status ===== -->
+                <section class="overflow-hidden rounded-3xl bg-white ring-1 ring-gray-200/80 shadow-sm lg:col-span-3">
 
-            <div v-if="consultation.status === 'pending'" class="p-4 border border-amber-200 bg-amber-50 rounded-lg mb-4">
-                <p class="text-sm text-amber-700 mb-3">Terima permintaan ini?</p>
-
-                <div v-if="consultation.type === 'tatap_muka'" class="mb-3">
-                    <label for="location-note" class="block text-xs font-medium text-gray-600 mb-1">
-                        Catatan lokasi pertemuan (opsional)
-                    </label>
-                    <textarea
-                        id="location-note"
-                        v-model="locationNote"
-                        rows="2"
-                        maxlength="500"
-                        placeholder="Contoh: Ketemu di Klinik Kenali, Jl. Contoh No. 1"
-                        class="w-full rounded-md border-gray-300 text-sm"
-                    ></textarea>
-                </div>
-
-                <label for="scheduled-at" class="block text-xs font-medium text-gray-600 mb-1">Jadwal</label>
-                <input
-                    id="scheduled-at"
-                    v-model="scheduleForm.scheduled_at"
-                    type="datetime-local"
-                    class="w-full mb-3 rounded-md border-gray-300 text-sm"
-                />
-                <p v-if="scheduleForm.errors.scheduled_at" class="text-xs text-red-600 mb-2" role="alert">
-                    {{ scheduleForm.errors.scheduled_at }}
-                </p>
-                <div class="flex gap-2">
-                    <button
-                        type="button"
-                        @click="acceptAndSchedule"
-                        :disabled="scheduleForm.processing || statusProcessing || !scheduleForm.scheduled_at"
-                        class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm font-medium disabled:opacity-40"
-                    >
-                        {{ scheduleForm.processing ? 'Memproses…' : 'Terima & Jadwalkan' }}
-                    </button>
-                    <button
-                        type="button"
-                        @click="cancelConsultation"
-                        :disabled="scheduleForm.processing || statusProcessing"
-                        class="px-4 py-2 rounded-md bg-gray-100 text-gray-600 text-sm font-medium disabled:opacity-40"
-                    >
-                        Tolak
-                    </button>
-                </div>
-            </div>
-
-            <template v-if="consultation.status === 'scheduled'">
-                <div
-                    v-if="closesAt"
-                    class="mb-4 p-3 rounded-md bg-amber-50 border border-amber-200 text-sm text-amber-800"
-                    role="status"
-                >
-                    Belum ada aktivitas beberapa hari terakhir. Konsultasi ini akan ditutup otomatis pada
-                    <strong>{{ formatDate(closesAt) }}</strong>. Kirim pesan jika ingin melanjutkannya.
-                </div>
-
-                <div v-if="consultation.type === 'tatap_muka'" class="mb-4 p-3 rounded-md bg-teal-50 text-sm text-teal-700">
-                    📍 Pertemuan tatap muka langsung terjadwal. Pastikan detail lokasi
-                    sudah disampaikan ke user lewat chat di bawah.
-                </div>
-
-                <div ref="messagesContainer" class="space-y-3 mb-4 max-h-96 overflow-y-auto">
-                    <div
-                        v-for="msg in messages"
-                        :key="msg.id"
-                        class="max-w-[80%] p-3 rounded-lg text-sm"
-                        :class="isMine(msg)
-                            ? 'ml-auto bg-teal-600 text-white'
-                            : 'bg-gray-100 text-gray-700'"
-                    >
-                        <p class="whitespace-pre-line break-words">{{ msg.message }}</p>
-                        <div
-                            class="mt-1 flex items-center justify-end gap-1 text-[10px]"
-                            :class="isMine(msg) ? 'text-teal-100' : 'text-gray-400'"
+                    <!-- Kepala -->
+                    <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+                        <div class="flex min-w-0 items-center gap-3">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-rose-400 to-indigo-500 text-sm font-bold text-white">
+                                {{ initials(consultation.user.name) }}
+                            </span>
+                            <div class="min-w-0">
+                                <p class="truncate text-sm font-semibold text-gray-900">{{ consultation.user.name }}</p>
+                                <p class="text-xs text-gray-400">Jenis: {{ typeLabel[consultation.type] ?? consultation.type }}</p>
+                            </div>
+                        </div>
+                        <span
+                            class="shrink-0 rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset"
+                            :class="statusChip[consultation.status] ?? 'bg-gray-100 text-gray-500 ring-gray-500/20'"
                         >
-                            <span>{{ formatTime(msg.sent_at) }}</span>
-                            <span
-                                v-if="isMine(msg)"
-                                :class="msg.read_at ? 'text-sky-300 font-bold' : ''"
-                                :title="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
-                                :aria-label="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
-                            >{{ msg.read_at ? '✓✓' : '✓' }}</span>
+                            {{ statusText[consultation.status] ?? consultation.status }}
+                        </span>
+                    </div>
+
+                    <!-- Pending: terima / tolak -->
+                    <div v-if="consultation.status === 'pending'" class="p-5 sm:p-6">
+                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                            <p class="text-sm font-semibold text-amber-900">Terima permintaan ini?</p>
+
+                            <div v-if="consultation.type === 'tatap_muka'" class="mt-4">
+                                <label for="location-note" class="mb-1.5 block text-xs font-medium text-gray-600">
+                                    Catatan lokasi pertemuan (opsional)
+                                </label>
+                                <textarea
+                                    id="location-note"
+                                    v-model="locationNote"
+                                    rows="2"
+                                    maxlength="500"
+                                    placeholder="Contoh: Ketemu di Klinik Kenali, Jl. Contoh No. 1"
+                                    :class="[fieldClass, 'resize-none']"
+                                ></textarea>
+                            </div>
+
+                            <label for="scheduled-at" class="mb-1.5 mt-4 block text-xs font-medium text-gray-600">Jadwal</label>
+                            <input
+                                id="scheduled-at"
+                                v-model="scheduleForm.scheduled_at"
+                                type="datetime-local"
+                                :class="fieldClass"
+                            />
+                            <p v-if="scheduleForm.errors.scheduled_at" class="mt-1.5 text-xs text-rose-600" role="alert">
+                                {{ scheduleForm.errors.scheduled_at }}
+                            </p>
+
+                            <div class="mt-5 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    @click="acceptAndSchedule"
+                                    :disabled="scheduleForm.processing || statusProcessing || !scheduleForm.scheduled_at"
+                                    class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:from-indigo-700 hover:to-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                                >
+                                    {{ scheduleForm.processing ? 'Memproses…' : 'Terima & Jadwalkan' }}
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="cancelConsultation"
+                                    :disabled="scheduleForm.processing || statusProcessing"
+                                    class="inline-flex items-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Tolak
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <p v-if="sendError" class="text-xs text-red-600 mb-2" role="alert">{{ sendError }}</p>
+                    <!-- Scheduled: percakapan -->
+                    <template v-else-if="consultation.status === 'scheduled'">
+                        <div
+                            ref="messagesContainer"
+                            class="h-[26rem] space-y-3 overflow-y-auto bg-gradient-to-b from-slate-50 to-white p-5"
+                        >
+                            <div
+                                v-for="msg in messages"
+                                :key="msg.id"
+                                class="max-w-[80%] px-4 py-2.5 text-sm shadow-sm"
+                                :class="isMine(msg)
+                                    ? 'ml-auto rounded-2xl rounded-br-md bg-gradient-to-br from-teal-600 to-sky-600 text-white'
+                                    : 'rounded-2xl rounded-bl-md bg-white text-gray-700 ring-1 ring-gray-200'"
+                            >
+                                <p class="whitespace-pre-line break-words">{{ msg.message }}</p>
+                                <div
+                                    class="mt-1 flex items-center justify-end gap-1 text-[10px]"
+                                    :class="isMine(msg) ? 'text-teal-100' : 'text-gray-400'"
+                                >
+                                    <span>{{ formatTime(msg.sent_at) }}</span>
+                                    <span
+                                        v-if="isMine(msg)"
+                                        :class="msg.read_at ? 'font-bold text-amber-200' : ''"
+                                        :title="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                                        :aria-label="msg.read_at ? 'Sudah dibaca' : 'Terkirim'"
+                                    >{{ msg.read_at ? '✓✓' : '✓' }}</span>
+                                </div>
+                            </div>
+                        </div>
 
-                <p v-if="otherPartyTyping" class="text-xs text-gray-400 italic mb-2">
-                    {{ consultation.user.name }} sedang menulis…
-                </p>
+                        <div class="border-t border-gray-100 p-4">
+                            <p v-if="sendError" class="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700" role="alert">{{ sendError }}</p>
 
-                <div class="flex gap-2 mb-4">
-                    <input
-                        v-model="newMessage"
-                        @input="handleTyping"
-                        @keyup.enter="sendMessage"
-                        type="text"
-                        :maxlength="MAX_MESSAGE_LENGTH"
-                        aria-label="Tulis pesan"
-                        placeholder="Tulis pesan…"
-                        class="flex-1 rounded-md border-gray-300 text-sm"
-                    />
-                    <button
-                        type="button"
-                        @click="sendMessage"
-                        :disabled="sending || !newMessage.trim()"
-                        class="px-4 py-2 rounded-md bg-teal-600 text-white text-sm disabled:opacity-40"
+                            <p v-if="otherPartyTyping" class="mb-2 text-xs italic text-gray-400">
+                                {{ consultation.user.name }} sedang menulis…
+                            </p>
+
+                            <div class="flex gap-2">
+                                <input
+                                    v-model="newMessage"
+                                    @input="handleTyping"
+                                    @keyup.enter="sendMessage"
+                                    type="text"
+                                    :maxlength="MAX_MESSAGE_LENGTH"
+                                    aria-label="Tulis pesan"
+                                    placeholder="Tulis pesan…"
+                                    class="flex-1 rounded-full border-gray-200 bg-gray-50 px-5 text-sm placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:ring-indigo-400"
+                                />
+                                <button
+                                    type="button"
+                                    @click="sendMessage"
+                                    :disabled="sending || !newMessage.trim()"
+                                    class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:from-indigo-700 hover:to-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                                >
+                                    {{ sending ? 'Mengirim…' : 'Kirim' }}
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Completed -->
+                    <div v-else-if="consultation.status === 'completed'" class="p-5 sm:p-6">
+                        <div class="mb-5 flex items-center justify-center gap-2 rounded-2xl bg-emerald-50 py-5 text-sm font-medium text-emerald-700 ring-1 ring-emerald-100">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
+                            Konsultasi ini sudah selesai.
+                        </div>
+
+                        <ReviewReplyForm
+                            v-if="consultation.review"
+                            :review="consultation.review"
+                            :editable="replyEditable"
+                        />
+                        <p v-else class="rounded-2xl bg-gray-50 py-5 text-center text-xs text-gray-400">Pasien belum memberi ulasan.</p>
+                    </div>
+
+                    <!-- Cancelled -->
+                    <div v-else-if="consultation.status === 'cancelled'" class="p-5 sm:p-6">
+                        <div class="rounded-2xl border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+                            Dibatalkan: {{ consultation.cancelled_reason }}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Kanan: informasi & aksi ===== -->
+                <aside class="space-y-4 lg:col-span-2">
+
+                    <div
+                        v-if="consultation.scheduled_at && consultation.status === 'scheduled'"
+                        class="rounded-2xl bg-sky-50 p-5 ring-1 ring-sky-100"
                     >
-                        {{ sending ? 'Mengirim…' : 'Kirim' }}
-                    </button>
-                </div>
+                        <p class="text-xs font-medium text-sky-600">Jadwal</p>
+                        <p class="mt-1 text-sm text-sky-950">
+                            Jadwal: <strong>{{ formatDateTime(consultation.scheduled_at) }}</strong>
+                        </p>
+                    </div>
 
-                <div class="flex items-center gap-4">
-                    <button
-                        type="button"
-                        @click="markCompleted"
-                        :disabled="statusProcessing"
-                        class="text-xs text-gray-500 hover:text-green-600 disabled:opacity-40"
-                    >
-                        Tandai selesai
-                    </button>
-                    <button
-                        type="button"
-                        @click="cancelConsultation"
-                        :disabled="statusProcessing"
-                        class="text-xs text-gray-500 hover:text-red-600 disabled:opacity-40"
-                    >
-                        Batalkan konsultasi
-                    </button>
-                </div>
-            </template>
+                    <div v-if="topAlternative" class="rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 p-5 ring-1 ring-indigo-100">
+                        <p class="text-xs font-medium text-indigo-500">Rekomendasi dari hasil tes</p>
+                        <p class="mt-1 text-base font-bold text-indigo-900">{{ topAlternative }}</p>
+                    </div>
 
-            <div v-if="consultation.status === 'completed'">
-                <div class="text-center text-sm text-green-600 py-6">
-                    Konsultasi ini sudah selesai.
-                </div>
+                    <div v-if="consultation.notes" class="rounded-2xl bg-white p-5 ring-1 ring-gray-200/80 shadow-sm">
+                        <p class="mb-2 text-xs font-semibold text-gray-400">Catatan</p>
+                        <p class="whitespace-pre-line border-l-4 border-indigo-200 pl-3 text-sm italic leading-relaxed text-gray-600">
+                            "{{ consultation.notes }}"
+                        </p>
+                    </div>
 
-                <ReviewReplyForm
-                    v-if="consultation.review"
-                    :review="consultation.review"
-                    :editable="replyEditable"
-                />
-                <p v-else class="text-center text-xs text-gray-400">Pasien belum memberi ulasan.</p>
-            </div>
-            <div v-if="consultation.status === 'cancelled'" class="text-center text-sm text-gray-500 py-6">
-                Dibatalkan: {{ consultation.cancelled_reason }}
+                    <template v-if="consultation.status === 'scheduled'">
+                        <div
+                            v-if="closesAt"
+                            class="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+                            role="status"
+                        >
+                            <svg class="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                            <p>
+                                Belum ada aktivitas beberapa hari terakhir. Konsultasi ini akan ditutup otomatis pada
+                                <strong>{{ formatDate(closesAt) }}</strong>. Kirim pesan jika ingin melanjutkannya.
+                            </p>
+                        </div>
+
+                        <div
+                            v-if="consultation.type === 'tatap_muka'"
+                            class="flex items-start gap-3 rounded-2xl bg-teal-50 p-4 text-sm text-teal-800 ring-1 ring-teal-100"
+                        >
+                            <svg class="mt-0.5 h-5 w-5 shrink-0 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>
+                            <p>
+                                Pertemuan tatap muka langsung terjadwal. Pastikan detail lokasi
+                                sudah disampaikan ke user lewat chat di samping.
+                            </p>
+                        </div>
+
+                        <div class="rounded-2xl bg-white p-5 ring-1 ring-gray-200/80 shadow-sm">
+                            <p class="mb-3 text-xs font-semibold text-gray-400">Aksi konsultasi</p>
+                            <div class="flex flex-col gap-2">
+                                <button
+                                    type="button"
+                                    @click="markCompleted"
+                                    :disabled="statusProcessing"
+                                    class="inline-flex items-center justify-center rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Tandai selesai
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="cancelConsultation"
+                                    :disabled="statusProcessing"
+                                    class="inline-flex items-center justify-center rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-600 ring-1 ring-rose-200 transition hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Batalkan konsultasi
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </aside>
             </div>
         </div>
     </AuthenticatedLayout>

@@ -4,7 +4,9 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import BackgroundBlobs from '@/Components/Landing/BackgroundBlobs.vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import '../../css/kenali.css';
 
 const page = usePage();
 const showingNavigationDropdown = ref(false);
@@ -29,12 +31,6 @@ function closeMobileNav() {
     showingNavigationDropdown.value = false;
 }
 
-// ---------------------------------------------------------------
-// Daftar menu. Route, aturan peran, dan logika "active" SAMA dengan
-// versi sebelumnya -- hanya dikumpulkan jadi satu daftar supaya menu
-// desktop & mobile tidak duplikat. `page.url` dibaca agar status
-// active ikut diperbarui setiap pindah halaman.
-// ---------------------------------------------------------------
 const icons = {
     dashboard: 'M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z',
     tests: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z',
@@ -46,6 +42,7 @@ const icons = {
     psychologists: 'M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z',
 };
 
+// Warna menu mengikuti palet Kenali: violet, rose, sky (+ indigo untuk Dashboard)
 const navItems = computed(() => {
     void page.url;
 
@@ -76,7 +73,7 @@ const navItems = computed(() => {
         items.push({
             key: 'psikolog-consultations', label: 'Konsultasi Masuk', icon: icons.chat,
             href: route('psikolog.consultations.index'), active: route().current('psikolog.*'),
-            on: 'bg-teal-50 text-teal-700', dot: 'text-teal-500',
+            on: 'bg-sky-50 text-sky-700', dot: 'text-sky-500',
         });
     }
 
@@ -90,23 +87,23 @@ const navItems = computed(() => {
             {
                 key: 'questions', label: 'Bank Soal', icon: icons.questions,
                 href: route('admin.questions.index'), active: route().current('admin.questions.*'),
-                on: 'bg-teal-50 text-teal-700', dot: 'text-teal-500',
+                on: 'bg-sky-50 text-sky-700', dot: 'text-sky-500',
             },
             {
                 key: 'alternatives', label: 'Alternatif', icon: icons.alternatives,
                 href: route('admin.alternatives.index'),
                 active: route().current('admin.alternatives.*') || route().current('admin.alternative-profiles.*'),
-                on: 'bg-amber-50 text-amber-700', dot: 'text-amber-500',
+                on: 'bg-rose-50 text-rose-700', dot: 'text-rose-500',
             },
             {
                 key: 'users', label: 'User', icon: icons.users,
                 href: route('admin.users.index'), active: route().current('admin.users.*'),
-                on: 'bg-sky-50 text-sky-700', dot: 'text-sky-500',
+                on: 'bg-indigo-50 text-indigo-700', dot: 'text-indigo-500',
             },
             {
                 key: 'psychologists', label: 'Psikolog', icon: icons.psychologists,
                 href: route('admin.psychologists.index'), active: route().current('admin.psychologists.*'),
-                on: 'bg-rose-50 text-rose-700', dot: 'text-rose-500',
+                on: 'bg-violet-50 text-violet-700', dot: 'text-violet-500',
             },
         );
     }
@@ -116,9 +113,19 @@ const navItems = computed(() => {
 </script>
 
 <template>
+    <Head>
+        <link rel="preconnect" href="https://fonts.bunny.net" />
+        <link
+            href="https://fonts.bunny.net/css?family=bricolage-grotesque:600,700,800|figtree:400,500,600,700&display=swap"
+            rel="stylesheet"
+        />
+    </Head>
+
     <div>
-        <div class="min-h-screen bg-gradient-to-b from-indigo-50/70 via-slate-50 to-slate-50">
-            <nav class="sticky top-0 z-40 border-b border-gray-200/70 bg-white/85 backdrop-blur-md">
+        <div class="kenali min-h-screen antialiased">
+            <BackgroundBlobs />
+
+            <nav class="sticky top-0 z-40 bg-white/80 shadow-[0_1px_0_rgb(30_27_75/0.06)] backdrop-blur-md">
                 <!-- Primary Navigation Menu -->
                 <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div class="flex h-16 items-center justify-between">
@@ -127,10 +134,11 @@ const navItems = computed(() => {
                             <div class="flex shrink-0 items-center">
                                 <Link
                                     :href="route('dashboard')"
-                                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 via-violet-600 to-rose-500 shadow-md shadow-indigo-500/30 transition hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 motion-reduce:transition-none motion-reduce:hover:scale-100"
-                                    aria-label="Ke Dashboard"
+                                    class="flex items-center gap-2.5"
+                                    aria-label="Kenali, ke Dashboard"
                                 >
-                                    <ApplicationLogo class="block h-6 w-auto fill-current text-white" />
+                                    <ApplicationLogo class="block h-9 w-9" />
+                                    <span class="display hidden text-2xl font-extrabold tracking-tight text-[#1e1b4b] md:block">Kenali</span>
                                 </Link>
                             </div>
 
@@ -141,10 +149,10 @@ const navItems = computed(() => {
                                     :key="item.key"
                                     :href="item.href"
                                     :aria-current="item.active ? 'page' : undefined"
-                                    class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                    class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                                     :class="item.active
                                         ? [item.on, 'font-semibold']
-                                        : 'font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-800'"
+                                        : 'font-medium text-gray-500 hover:bg-violet-50/60 hover:text-gray-800'"
                                 >
                                     <svg
                                         class="h-[18px] w-[18px] shrink-0"
@@ -167,7 +175,7 @@ const navItems = computed(() => {
                                         <span class="inline-flex rounded-full">
                                             <button
                                                 type="button"
-                                                class="inline-flex items-center gap-2.5 rounded-full border border-gray-200 bg-white py-1.5 pe-3 ps-1.5 text-sm font-medium text-gray-600 transition hover:border-indigo-200 hover:bg-indigo-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                                class="inline-flex items-center gap-2.5 rounded-full border border-gray-200 bg-white py-1.5 pe-3 ps-1.5 text-sm font-medium text-gray-600 transition hover:border-violet-200 hover:bg-violet-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                                             >
                                                 <img
                                                     v-if="avatarUrl"
@@ -177,7 +185,7 @@ const navItems = computed(() => {
                                                 />
                                                 <span
                                                     v-else
-                                                    class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-indigo-500 text-xs font-bold text-white"
+                                                    class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[#9277ff] to-[#ff5c93] text-xs font-bold text-white"
                                                     aria-hidden="true"
                                                 >
                                                     {{ userInitial }}
@@ -187,7 +195,7 @@ const navItems = computed(() => {
                                                     <span class="max-w-[9rem] truncate text-sm font-semibold text-gray-800">
                                                         {{ page.props.auth.user?.name ?? '' }}
                                                     </span>
-                                                    <span v-if="primaryRole" class="text-[11px] font-medium text-indigo-500">
+                                                    <span v-if="primaryRole" class="text-[11px] font-medium text-violet-600">
                                                         {{ primaryRole }}
                                                     </span>
                                                 </span>
@@ -217,7 +225,7 @@ const navItems = computed(() => {
                                 @click="showingNavigationDropdown = !showingNavigationDropdown"
                                 :aria-expanded="showingNavigationDropdown"
                                 aria-label="Buka menu navigasi"
-                                class="inline-flex items-center justify-center rounded-xl p-2 text-gray-500 transition hover:bg-indigo-50 hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                class="inline-flex items-center justify-center rounded-xl p-2 text-gray-500 transition hover:bg-violet-50 hover:text-violet-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                             >
                                 <svg class="h-6 w-6" stroke="currentColor" fill="none" viewBox="0 0 24 24">
                                     <path
@@ -245,10 +253,10 @@ const navItems = computed(() => {
                             :href="item.href"
                             :aria-current="item.active ? 'page' : undefined"
                             @click="closeMobileNav"
-                            class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-base transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                            class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-base transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                             :class="item.active
                                 ? [item.on, 'font-semibold']
-                                : 'font-medium text-gray-600 hover:bg-gray-100'"
+                                : 'font-medium text-gray-600 hover:bg-violet-50/60'"
                         >
                             <svg
                                 class="h-5 w-5 shrink-0"
@@ -272,7 +280,7 @@ const navItems = computed(() => {
                             />
                             <span
                                 v-else
-                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 to-indigo-500 text-sm font-bold text-white"
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#9277ff] to-[#ff5c93] text-sm font-bold text-white"
                                 aria-hidden="true"
                             >
                                 {{ userInitial }}
@@ -291,7 +299,7 @@ const navItems = computed(() => {
                             <Link
                                 :href="route('profile.edit')"
                                 @click="closeMobileNav"
-                                class="block rounded-xl px-3 py-2.5 text-base font-medium text-gray-600 transition hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                                class="block rounded-xl px-3 py-2.5 text-base font-medium text-gray-600 transition hover:bg-violet-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
                             >
                                 Profile
                             </Link>
@@ -310,7 +318,7 @@ const navItems = computed(() => {
 
             <!-- Page Heading -->
             <header v-if="$slots.header" class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
-                <div class="[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-gray-900">
+                <div class="display [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:text-gray-900">
                     <slot name="header" />
                 </div>
             </header>
